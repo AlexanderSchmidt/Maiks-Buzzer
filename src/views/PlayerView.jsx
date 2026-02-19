@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Zap, Send, Type, Check, CheckCircle, Clock, LogOut, Volume2, VolumeX, Music } from 'lucide-react';
+import { Zap, Send, Type, Check, CheckCircle, Clock, LogOut, Volume2, VolumeX, Music, UsersRound, Lock } from 'lucide-react';
 import { SOUND_NAMES, loadSoundPrefs, saveSoundPrefs, resolveSoundId, playBuzzSound } from '../sounds';
 
 const MODE_LABELS = { BUZZER: 'Buzzer', MULTIPLE_CHOICE: 'Multiple Choice', GUESS: 'Guess', SEQUENCE: 'Sequence' };
@@ -16,6 +16,10 @@ export default function PlayerView({ store }) {
     submitAnswer,
     leaveRoom,
     setSound,
+    teams,
+    playerTeams,
+    teamsEnabled,
+    teamScores,
   } = store;
 
   const history = (store.history || []).filter((h) => h.playerId === playerId);
@@ -40,6 +44,11 @@ export default function PlayerView({ store }) {
   const myBuzz = gameState.buzzes.find((b) => b.playerId === playerId);
   const myAnswer = gameState.playerAnswers?.[playerId] || null;
   const isSubmitted = myAnswer?.submitted || false;
+
+  // Solo mode: check if another player already submitted (locks everyone else out)
+  const soloLocked = !gameState.raceMode && !isSubmitted && Object.entries(gameState.playerAnswers || {}).some(
+    ([pid, ans]) => pid !== playerId && ans?.submitted
+  );
 
   useEffect(() => {
     if (myBuzz) {
@@ -174,6 +183,14 @@ export default function PlayerView({ store }) {
   const [scoreAnim, setScoreAnim] = useState(null); // 'up' | 'down' | null
   const prevScoreRef = useRef(myScore);
 
+  // Team info
+  const myTeamId = playerTeams?.[playerId] || null;
+  const myTeam = myTeamId && teams?.[myTeamId] ? teams[myTeamId] : null;
+  const myTeamScore = myTeamId ? (teamScores?.[myTeamId] ?? 0) : null;
+  const teammates = teamsEnabled && myTeamId
+    ? players.filter((p) => p.id !== playerId && playerTeams?.[p.id] === myTeamId)
+    : [];
+
   useEffect(() => {
     if (myScore > prevScoreRef.current) {
       setScoreAnim('up');
@@ -186,6 +203,24 @@ export default function PlayerView({ store }) {
       return () => clearTimeout(timer);
     }
   }, [myScore]);
+
+  // Team score animation
+  const [teamScoreAnim, setTeamScoreAnim] = useState(null);
+  const prevTeamScoreRef = useRef(myTeamScore);
+
+  useEffect(() => {
+    if (myTeamScore === null) return;
+    if (prevTeamScoreRef.current !== null) {
+      if (myTeamScore > prevTeamScoreRef.current) {
+        setTeamScoreAnim('up');
+      } else if (myTeamScore < prevTeamScoreRef.current) {
+        setTeamScoreAnim('down');
+      }
+    }
+    prevTeamScoreRef.current = myTeamScore;
+    const timer = setTimeout(() => setTeamScoreAnim(null), 600);
+    return () => clearTimeout(timer);
+  }, [myTeamScore]);
 
   // ── Render based on currentMode ────────────────────────────────────────
   const renderModeUI = () => {
@@ -240,9 +275,11 @@ export default function PlayerView({ store }) {
                 <button
                   key={idx}
                   onClick={() => handleMcSelect(idx)}
-                  disabled={isSubmitted}
+                  disabled={isSubmitted || soloLocked}
                   className={`w-full py-4 px-4 text-lg font-bold rounded-xl transition-colors border text-left ${
-                    selectedMcIndex === idx
+                    soloLocked
+                      ? 'bg-gray-900 border-gray-800 text-gray-600 cursor-not-allowed opacity-60'
+                      : selectedMcIndex === idx
                       ? isSubmitted
                         ? 'bg-green-800 border-green-500 text-green-200'
                         : 'bg-purple-700 border-purple-400 text-white'
@@ -255,7 +292,11 @@ export default function PlayerView({ store }) {
                   {opt}
                 </button>
               ))}
-            {!isSubmitted ? (
+            {soloLocked ? (
+              <div className="flex items-center gap-2 text-red-400 text-sm font-semibold">
+                <Lock className="w-5 h-5" /> Another player already submitted
+              </div>
+            ) : !isSubmitted ? (
               <button
                 onClick={handleMcSubmit}
                 disabled={selectedMcIndex === null}
@@ -365,68 +406,91 @@ export default function PlayerView({ store }) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-8 p-4">
-      {/* Score badge + Leave + Sound */}
-      <div className="absolute top-4 right-4 flex items-center gap-3">
-        <div
-          className={`rounded-xl px-4 py-2 text-sm font-mono transition-all duration-500 ${
-            scoreAnim === 'up'
-              ? 'bg-green-700 scale-110 ring-2 ring-green-400 shadow-lg shadow-green-500/40'
-              : scoreAnim === 'down'
-              ? 'bg-red-700 scale-110 ring-2 ring-red-400 shadow-lg shadow-red-500/40'
-              : 'bg-gray-800'
-          }`}
-          onTransitionEnd={() => setScoreAnim(null)}
-        >
-          Score: <span className={`font-bold transition-colors duration-500 ${
-            scoreAnim === 'up' ? 'text-green-300' : scoreAnim === 'down' ? 'text-red-300' : 'text-yellow-400'
-          }`}>{myScore}</span>
+    <div className="min-h-screen flex flex-col items-center justify-center gap-8 p-4 pt-28 sm:pt-4">
+      {/* Top bar: Sound controls (left) + Badges (right) */}
+      <div className="fixed top-0 left-0 right-0 z-50 bg-gray-950/90 backdrop-blur-sm border-b border-gray-800/50 px-3 py-2 flex flex-wrap items-center gap-2 sm:gap-3 justify-between">
+        {/* Sound controls */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink min-w-0">
+          <select
+            value={soundSelection}
+            onChange={(e) => handleSoundChange(e.target.value)}
+            className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-indigo-500 min-w-0 max-w-[110px] sm:max-w-none"
+          >
+            {SOUND_NAMES.map((name, idx) => (
+              <option key={idx} value={idx}>{name}</option>
+            ))}
+          </select>
+          <button
+            onClick={handleTestSound}
+            className="w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-700 flex items-center justify-center text-gray-400 hover:text-white transition-colors shrink-0"
+            title="Test sound"
+          >
+            <Music className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={handleMuteToggle}
+            className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
+              muted ? 'bg-red-900/60 text-red-400' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white'
+            }`}
+            title={muted ? 'Unmute' : 'Mute'}
+          >
+            {muted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={volume}
+            onChange={(e) => handleVolumeChange(e.target.value)}
+            className="w-12 sm:w-16 accent-indigo-500"
+            title={`Volume: ${Math.round(volume * 100)}%`}
+          />
         </div>
-        <button
-          onClick={leaveRoom}
-          className="bg-red-900 hover:bg-red-800 rounded-xl px-3 py-2 text-sm transition-colors flex items-center gap-1"
-        >
-          <LogOut className="w-4 h-4" /> Leave
-        </button>
-      </div>
 
-      {/* Sound controls */}
-      <div className="absolute top-4 left-4 flex items-center gap-2">
-        <select
-          value={soundSelection}
-          onChange={(e) => handleSoundChange(e.target.value)}
-          className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-indigo-500"
-        >
-          {SOUND_NAMES.map((name, idx) => (
-            <option key={idx} value={idx}>{name}</option>
-          ))}
-        </select>
-        <button
-          onClick={handleTestSound}
-          className="w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-700 flex items-center justify-center text-gray-400 hover:text-white transition-colors"
-          title="Test sound"
-        >
-          <Music className="w-3.5 h-3.5" />
-        </button>
-        <button
-          onClick={handleMuteToggle}
-          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
-            muted ? 'bg-red-900/60 text-red-400' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white'
-          }`}
-          title={muted ? 'Unmute' : 'Mute'}
-        >
-          {muted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
-        </button>
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.05}
-          value={volume}
-          onChange={(e) => handleVolumeChange(e.target.value)}
-          className="w-16 accent-indigo-500"
-          title={`Volume: ${Math.round(volume * 100)}%`}
-        />
+        {/* Score badge + Team score + Leave */}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {teamsEnabled && myTeam && (
+            <div
+              className={`rounded-xl px-2 sm:px-3 py-1.5 sm:py-2 text-sm font-mono border flex items-center gap-1.5 transition-all duration-500 ${
+                teamScoreAnim === 'up'
+                  ? 'bg-green-700 scale-110 ring-2 ring-green-400 shadow-lg shadow-green-500/40 border-green-500/40'
+                  : teamScoreAnim === 'down'
+                  ? 'bg-red-700 scale-110 ring-2 ring-red-400 shadow-lg shadow-red-500/40 border-red-500/40'
+                  : 'bg-pink-900/50 border-pink-700/40'
+              }`}
+              onTransitionEnd={() => setTeamScoreAnim(null)}
+            >
+              <UsersRound className="w-3.5 h-3.5 text-pink-400" />
+              <span className="text-pink-300 text-xs font-semibold">{myTeam.name}</span>
+              <span className={`font-bold transition-colors duration-500 ${
+                teamScoreAnim === 'up' ? 'text-green-300' : teamScoreAnim === 'down' ? 'text-red-300' : 'text-yellow-400'
+              }`}>{myTeamScore}</span>
+            </div>
+          )}
+          {!(teamsEnabled && myTeam) && (
+          <div
+            className={`rounded-xl px-3 sm:px-4 py-1.5 sm:py-2 text-sm font-mono transition-all duration-500 ${
+              scoreAnim === 'up'
+                ? 'bg-green-700 scale-110 ring-2 ring-green-400 shadow-lg shadow-green-500/40'
+                : scoreAnim === 'down'
+                ? 'bg-red-700 scale-110 ring-2 ring-red-400 shadow-lg shadow-red-500/40'
+                : 'bg-gray-800'
+            }`}
+            onTransitionEnd={() => setScoreAnim(null)}
+          >
+            Score: <span className={`font-bold transition-colors duration-500 ${
+              scoreAnim === 'up' ? 'text-green-300' : scoreAnim === 'down' ? 'text-red-300' : 'text-yellow-400'
+            }`}>{myScore}</span>
+          </div>
+          )}
+          <button
+            onClick={leaveRoom}
+            className="bg-red-900 hover:bg-red-800 rounded-xl px-2 sm:px-3 py-1.5 sm:py-2 text-sm transition-colors flex items-center gap-1"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Mode indicator */}
@@ -437,6 +501,41 @@ export default function PlayerView({ store }) {
       </div>
 
       {renderModeUI()}
+
+      {/* Teammates panel */}
+      {teamsEnabled && myTeam && teammates.length > 0 && (
+        <div className="w-full max-w-md bg-pink-900/20 border border-pink-800/30 rounded-xl p-3">
+          <div className="flex items-center gap-2 text-xs font-semibold text-pink-300 uppercase tracking-wider mb-2">
+            <UsersRound className="w-3.5 h-3.5" />
+            Teammates
+          </div>
+          <div className="space-y-1.5">
+            {teammates.map((mate) => {
+              const mateBuzz = gameState.buzzes.find((b) => b.playerId === mate.id);
+              const mateRank = mateBuzz ? gameState.buzzes.indexOf(mateBuzz) + 1 : null;
+              const mateAnswer = gameState.playerAnswers?.[mate.id];
+              return (
+                <div key={mate.id} className="flex items-center gap-2 text-sm bg-gray-900/60 rounded-lg px-3 py-1.5">
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${mateRank ? 'bg-green-400' : 'bg-gray-600'}`} />
+                  <span className="font-medium text-gray-200 truncate max-w-[100px]">{mate.name}</span>
+                  {mateRank && (
+                    <span className="text-xs text-green-400 font-mono">#{mateRank}</span>
+                  )}
+                  {mateAnswer?.submitted && (
+                    <span className="text-xs text-indigo-400">
+                      <CheckCircle className="w-3 h-3 inline" /> Submitted
+                    </span>
+                  )}
+                  {mate.text && (
+                    <span className="ml-auto text-xs text-gray-500 truncate max-w-[100px]" title={mate.text}>{mate.text}</span>
+                  )}
+                  <span className="ml-auto text-xs font-mono text-yellow-400">{mate.score}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Text input area */}
       <div className="w-full max-w-md flex gap-2">

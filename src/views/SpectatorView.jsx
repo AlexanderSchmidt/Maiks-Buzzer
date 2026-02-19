@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { Eye, Trophy, Zap, MessageSquare, CheckCircle, Clock, LogOut, Users } from 'lucide-react';
+import { Eye, Trophy, Zap, MessageSquare, CheckCircle, Clock, LogOut, Users, UsersRound, Check } from 'lucide-react';
 
 const MODE_LABELS = { BUZZER: 'Buzzer', MULTIPLE_CHOICE: 'Multiple Choice', GUESS: 'Guess', SEQUENCE: 'Sequence' };
 
 export default function SpectatorView({ store }) {
-  const { roomId, gameState, players, leaveRoom } = store;
+  const { roomId, gameState, players, leaveRoom, teams, playerTeams, teamsEnabled, teamScores } = store;
   const history = store.history || [];
 
   const playerList = players.filter((p) => p.role === 'player');
@@ -115,14 +115,17 @@ export default function SpectatorView({ store }) {
     const first = gameState.buzzes[0]?.timestamp;
     const cur = gameState.buzzes[idx]?.timestamp;
     if (!first || !cur) return null;
-    return ((cur - first) / 1000).toFixed(2);
+    const delta = cur - first;
+    if (delta === 0) return '±0ms';
+    if (delta < 1000) return `+${delta}ms`;
+    return `+${(delta / 1000).toFixed(2)}s`;
   };
 
   const formatAnswer = (playerId) => {
     const ans = gameState.playerAnswers?.[playerId];
     if (!ans) return null;
 
-    const val = ans.value;
+    const val = ans.value ?? ans.preview;
     const submitted = ans.submitted;
 
     if (gameState.currentMode === 'MULTIPLE_CHOICE' && gameState.mcOptions) {
@@ -203,6 +206,11 @@ export default function SpectatorView({ store }) {
                       <span className="font-medium truncate max-w-[160px]">
                         {player.name}
                       </span>
+                      {teamsEnabled && playerTeams?.[player.id] && teams?.[playerTeams[player.id]] && (
+                        <span className="text-[10px] bg-pink-900/50 text-pink-300 px-1.5 py-0.5 rounded-full leading-none">
+                          {teams[playerTeams[player.id]].name}
+                        </span>
+                      )}
                       {rank && (
                         <span className="text-xs bg-green-800/40 text-green-400 px-2 py-0.5 rounded-full">
                           Buzzed {rankLabel(rank)}
@@ -231,7 +239,122 @@ export default function SpectatorView({ store }) {
             <MessageSquare className="w-4 h-4 text-blue-400" />
             Live Answers
           </h2>
-          {playerList.length === 0 ? (
+
+          {/* ── Multiple Choice: option-centric view ──────────────── */}
+          {gameState.currentMode === 'MULTIPLE_CHOICE' && gameState.mcOptionsLocked && gameState.mcOptions ? (
+            <div className="space-y-3">
+              {gameState.mcOptions
+                .map((opt, idx) => {
+                  // Gather players whose current value (submitted or preview) equals this index
+                  const selecting = playerList.filter((p) => {
+                    const pa = gameState.playerAnswers?.[p.id];
+                    if (!pa) return false;
+                    const val = pa.submitted ? pa.value : pa.value ?? pa.preview;
+                    return val === idx;
+                  });
+
+                  const MC_COLORS = [
+                    { bg: 'from-purple-900/50 to-purple-800/30', border: 'border-purple-500/40', badge: 'bg-purple-500', text: 'text-purple-300', ring: 'ring-purple-400/40' },
+                    { bg: 'from-blue-900/50 to-blue-800/30', border: 'border-blue-500/40', badge: 'bg-blue-500', text: 'text-blue-300', ring: 'ring-blue-400/40' },
+                    { bg: 'from-teal-900/50 to-teal-800/30', border: 'border-teal-500/40', badge: 'bg-teal-500', text: 'text-teal-300', ring: 'ring-teal-400/40' },
+                    { bg: 'from-amber-900/50 to-amber-800/30', border: 'border-amber-500/40', badge: 'bg-amber-500', text: 'text-amber-300', ring: 'ring-amber-400/40' },
+                  ];
+                  const c = MC_COLORS[idx % MC_COLORS.length];
+
+                  return (
+                    <div
+                      key={idx}
+                      className={`relative rounded-xl border bg-gradient-to-r p-4 transition-all duration-500 ${
+                        c.bg
+                      } ${
+                        selecting.length > 0 ? c.border : 'border-gray-700/30'
+                      }`}
+                    >
+                      {/* Option header */}
+                      <div className="flex items-center gap-3 mb-2">
+                        <span className={`flex items-center justify-center w-8 h-8 rounded-lg font-bold text-sm text-white ${c.badge} shadow-lg`}>
+                          {String.fromCharCode(65 + idx)}
+                        </span>
+                        <span className={`font-semibold ${c.text}`}>{opt || <span className="italic text-gray-500">empty</span>}</span>
+                        {/* Player count pill */}
+                        <span className={`ml-auto text-xs font-mono px-2 py-0.5 rounded-full ${
+                          selecting.length > 0 ? `${c.badge} text-white` : 'bg-gray-800 text-gray-500'
+                        } transition-all duration-300`}>
+                          {selecting.length}
+                        </span>
+                      </div>
+
+                      {/* Player chips */}
+                      <div className="flex flex-wrap gap-2 min-h-[28px]">
+                        {selecting.length === 0 && (
+                          <span className="text-xs text-gray-600 italic">No selections yet</span>
+                        )}
+                        {selecting.map((player) => {
+                          const pa = gameState.playerAnswers?.[player.id];
+                          const isSubmitted = pa?.submitted;
+                          const justSubmitted = newSubmitIds.has(player.id);
+
+                          return (
+                            <span
+                              key={player.id}
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all duration-500 ${
+                                isSubmitted
+                                  ? `bg-green-800/60 text-green-200 ring-2 ring-green-400/50 shadow-md shadow-green-500/20`
+                                  : 'bg-gray-700/60 text-gray-300 ring-1 ring-gray-600/40'
+                              } ${
+                                justSubmitted ? 'mc-chip-submit' : ''
+                              }`}
+                            >
+                              {isSubmitted && <Check className="w-3 h-3 text-green-400" />}
+                              {!isSubmitted && <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />}
+                              {player.name}
+                              {teamsEnabled && playerTeams?.[player.id] && teams?.[playerTeams[player.id]] && (
+                                <span className="text-[9px] opacity-60">({teams[playerTeams[player.id]].name})</span>
+                              )}
+                            </span>
+                          );
+                        })}
+                      </div>
+
+                      {/* Progress bar: proportion of players who chose this */}
+                      {(() => {
+                        const totalAnswered = playerList.filter((p) => gameState.playerAnswers?.[p.id]).length;
+                        const pct = totalAnswered > 0 ? (selecting.length / totalAnswered) * 100 : 0;
+                        return (
+                          <div className="mt-3 h-1 rounded-full bg-gray-800 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-700 ease-out ${c.badge}`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  );
+                })}
+
+              {/* Summary bar */}
+              {(() => {
+                const totalPlayers = playerList.length;
+                const answered = playerList.filter((p) => gameState.playerAnswers?.[p.id]).length;
+                const submitted = playerList.filter((p) => gameState.playerAnswers?.[p.id]?.submitted).length;
+                return (
+                  <div className="flex items-center gap-4 mt-2 pt-3 border-t border-gray-800">
+                    <span className="text-xs text-gray-500">
+                      <span className="font-mono text-gray-300">{answered}</span>/{totalPlayers} answered
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      <span className="font-mono text-green-400">{submitted}</span> submitted
+                    </span>
+                    <div className="ml-auto flex items-center gap-3 text-[10px] text-gray-600">
+                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> Submitted</span>
+                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse inline-block" /> Selecting</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          ) : playerList.length === 0 ? (
             <p className="text-gray-600 italic text-sm">No players yet</p>
           ) : (
             <div className="space-y-2">
@@ -258,7 +381,14 @@ export default function SpectatorView({ store }) {
                       }`}
                     />
                     <div className="min-w-0 flex-1">
-                      <span className="text-xs text-gray-500">{player.name}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-gray-500">{player.name}</span>
+                        {teamsEnabled && playerTeams?.[player.id] && teams?.[playerTeams[player.id]] && (
+                          <span className="text-[10px] bg-pink-900/50 text-pink-300 px-1 py-0 rounded-full leading-none">
+                            {teams[playerTeams[player.id]].name}
+                          </span>
+                        )}
+                      </div>
                       {ans ? (
                         <div className="flex items-center gap-2">
                           <p className={`text-sm break-words ${
@@ -316,7 +446,7 @@ export default function SpectatorView({ store }) {
                   <span className="font-bold">{rankLabel(idx + 1)}</span>
                   {buzz.playerName}
                   {delta && (
-                    <span className="text-xs text-red-400 ml-1">+{delta}s</span>
+                    <span className="text-xs text-red-400 ml-1">{delta}</span>
                   )}
                   <span className="text-xs text-gray-500 ml-1">
                     {new Date(buzz.timestamp).toLocaleTimeString()}
@@ -324,6 +454,37 @@ export default function SpectatorView({ store }) {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Team Scoreboard */}
+      {teamsEnabled && Object.keys(teams || {}).length > 0 && (
+        <div className="mt-6 bg-gray-900 rounded-2xl p-4">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">
+            <UsersRound className="w-4 h-4 text-pink-400" />
+            Team Scores
+          </h2>
+          <div className="flex flex-wrap gap-3">
+            {Object.entries(teams)
+              .sort(([, a], [, b]) => (teamScores?.[b] ?? 0) - (teamScores?.[a] ?? 0))
+              .map(([teamId, team], idx) => {
+                const memberCount = playerList.filter((p) => playerTeams?.[p.id] === teamId).length;
+                return (
+                  <div
+                    key={teamId}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${
+                      idx === 0
+                        ? 'bg-pink-900/30 border-pink-600/40'
+                        : 'bg-gray-800/50 border-gray-700/30'
+                    }`}
+                  >
+                    <span className="font-semibold text-pink-300">{team.name}</span>
+                    <span className="font-mono font-bold text-yellow-400 text-lg">{teamScores?.[teamId] ?? 0}</span>
+                    <span className="text-xs text-gray-500">({memberCount} player{memberCount !== 1 ? 's' : ''})</span>
+                  </div>
+                );
+              })}
           </div>
         </div>
       )}

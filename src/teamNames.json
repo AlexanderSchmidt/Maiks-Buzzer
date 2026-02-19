@@ -1,0 +1,22 @@
+{
+  "adjectives": [
+    "Krawallgebürstete", "Flauschige", "Griesgrämige", "Wackelige", "Pikante",
+    "Chaotische", "Schläfrige", "Moppelige", "Schnieke", "Flotte",
+    "Schwindelige", "Flippige", "Salzige", "Knusprige", "Gewaltige",
+    "Ulkige", "Alberne", "Tolpatschige", "Funkelnde", "Mürrische",
+    "Matschige", "Quirlige", "Hektische", "Zappelige", "Schrullige",
+    "Vorlaute", "Käsige", "Randalierende", "Verrückte", "Windige",
+    "Verwirrte", "Dramatische", "Faule", "Hangrige", "Röstige",
+    "Streberhafte", "Dabbige", "Mutige", "Peppige", "Geheimnisvolle"
+  ],
+  "nouns": [
+    "Pandas", "Waffeln", "Ninjas", "Gewürzgurken", "Lamas",
+    "Nudeln", "Pinguine", "Tacos", "Kartoffeln", "Zauberer",
+    "Bananen", "Affen", "Einhörner", "Knödel", "Faultiere",
+    "Burritos", "Hühner", "Kobolde", "Muffins", "Fischotter",
+    "Nachos", "Tauben", "Toaster", "Hamster", "Kakteen",
+    "Wombats", "Pfannkuchen", "Pilze", "Papageien", "Nuggets",
+    "Brezeln", "Kobras", "Delfine", "Kekse", "Avocados",
+    "Wikinger", "Eichhörnchen", "Pudel", "Donuts", "Waschbären"
+  ]
+}

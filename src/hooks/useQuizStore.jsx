@@ -16,6 +16,10 @@ const INITIAL_STATE = {
   },
   players: [],
   scores: {},
+  teams: {},
+  playerTeams: {},
+  teamsEnabled: false,
+  teamScores: {},
   history: [],
   error: null,
 };
@@ -92,6 +96,10 @@ export function QuizProvider({ children }) {
         gameState: payload.gameState,
         players: payload.players,
         scores: payload.scores,
+        teams: payload.teams || {},
+        playerTeams: payload.playerTeams || {},
+        teamsEnabled: payload.teamsEnabled || false,
+        teamScores: payload.teamScores || {},
         history: payload.history || [],
       }));
     };
@@ -206,6 +214,26 @@ export function QuizProvider({ children }) {
     socket.emit('TOGGLE_SHOW_BUZZ', { enabled });
   }, []);
 
+  const toggleTeams = useCallback((enabled) => {
+    socket.emit('TOGGLE_TEAMS', { enabled });
+  }, []);
+
+  const setTeam = useCallback((targetPlayerId, teamId) => {
+    socket.emit('SET_TEAM', { targetPlayerId, teamId });
+  }, []);
+
+  const createTeam = useCallback((name) => {
+    socket.emit('CREATE_TEAM', { name });
+  }, []);
+
+  const renameTeam = useCallback((teamId, name) => {
+    socket.emit('RENAME_TEAM', { teamId, name });
+  }, []);
+
+  const removeTeam = useCallback((teamId) => {
+    socket.emit('REMOVE_TEAM', { teamId });
+  }, []);
+
   const setMcOptions = useCallback((options) => {
     socket.emit('SET_MC_OPTIONS', { options });
   }, []);
@@ -271,6 +299,11 @@ export function QuizProvider({ children }) {
     setScore,
     toggleRaceMode,
     toggleShowBuzz,
+    toggleTeams,
+    setTeam,
+    createTeam,
+    renameTeam,
+    removeTeam,
     setMcOptions,
     lockMcOptions,
     setSliderRange,

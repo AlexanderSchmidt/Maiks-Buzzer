@@ -4,6 +4,8 @@ const { Server } = require('socket.io');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 
+const teamNamesData = require('./src/teamNames.json');
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -15,6 +17,18 @@ const io = new Server(server, {
 
 // Serve static files from the Vite build output
 app.use(express.static(path.join(__dirname, 'dist')));
+
+// ─── Random Team Name Generator ──────────────────────────────────────────────
+function generateTeamName(existingNames = []) {
+  const existing = new Set(existingNames);
+  for (let i = 0; i < 100; i++) {
+    const adj = teamNamesData.adjectives[Math.floor(Math.random() * teamNamesData.adjectives.length)];
+    const noun = teamNamesData.nouns[Math.floor(Math.random() * teamNamesData.nouns.length)];
+    const name = `${adj} ${noun}`;
+    if (!existing.has(name)) return name;
+  }
+  return `Team ${Date.now().toString(36).slice(-4).toUpperCase()}`;
+}
 
 // ─── In-Memory Room Store ────────────────────────────────────────────────────
 const rooms = new Map();
@@ -48,10 +62,26 @@ function createRoom() {
     },
     players: new Map(),  // socketId → { id, name, role, text, score }
     scores: {},          // playerId → score (persistent across resets)
+    teams: {},           // teamId → { name, color }
+    playerTeams: {},     // playerId → teamId
+    teamsEnabled: false, // whether team mode is active
     history: [],         // [{ id, timestamp, playerId, playerName, action, detail }]
   };
   rooms.set(id, room);
   return room;
+}
+
+function getTeamScores(room) {
+  const teamScores = {};
+  for (const [teamId] of Object.entries(room.teams)) {
+    teamScores[teamId] = 0;
+  }
+  for (const [playerId, teamId] of Object.entries(room.playerTeams)) {
+    if (teamScores[teamId] !== undefined) {
+      teamScores[teamId] += (room.scores[playerId] ?? 0);
+    }
+  }
+  return teamScores;
 }
 
 function getRoomPayload(room) {
@@ -65,6 +95,7 @@ function getRoomPayload(room) {
       text: p.text || '',
       score: room.scores[p.id] ?? 0,
       soundId: p.soundId || 0,
+      teamId: room.playerTeams[p.id] || null,
     });
   }
   return {
@@ -72,6 +103,10 @@ function getRoomPayload(room) {
     gameState: room.gameState,
     players,
     scores: room.scores,
+    teams: room.teams,
+    playerTeams: room.playerTeams,
+    teamsEnabled: room.teamsEnabled,
+    teamScores: getTeamScores(room),
     history: room.history,
   };
 }
@@ -129,6 +164,24 @@ io.on('connection', (socket) => {
     });
     if (role === 'player') {
       room.scores[playerId] = 0;
+      // Auto-assign to a random team if teams are enabled
+      if (room.teamsEnabled) {
+        const teamIds = Object.keys(room.teams);
+        if (teamIds.length > 0) {
+          // Put in the team with fewest players
+          const teamCounts = {};
+          teamIds.forEach(tid => teamCounts[tid] = 0);
+          Object.values(room.playerTeams).forEach(tid => { if (teamCounts[tid] !== undefined) teamCounts[tid]++; });
+          const minCount = Math.min(...Object.values(teamCounts));
+          const candidates = teamIds.filter(tid => teamCounts[tid] === minCount);
+          room.playerTeams[playerId] = candidates[Math.floor(Math.random() * candidates.length)];
+        } else {
+          // Create a new random team
+          const teamId = uuidv4().slice(0, 6);
+          room.teams[teamId] = { name: generateTeamName(Object.values(room.teams).map(t => t.name)) };
+          room.playerTeams[playerId] = teamId;
+        }
+      }
     }
     socket.join(room.id);
     socket.data = { roomId: room.id, playerId };
@@ -390,6 +443,14 @@ io.on('connection', (socket) => {
     if (!player || player.role !== 'player') return;
     const gs = room.gameState;
 
+    // In solo (non-race) mode, block submit if someone else already submitted
+    if (!gs.raceMode) {
+      const someoneElseSubmitted = Object.entries(gs.playerAnswers).some(
+        ([pid, ans]) => pid !== playerId && ans.submitted
+      );
+      if (someoneElseSubmitted) return;
+    }
+
     if (!gs.playerAnswers[playerId]) {
       gs.playerAnswers[playerId] = { preview: null, value: null, submitted: false };
     }
@@ -439,6 +500,95 @@ io.on('connection', (socket) => {
     broadcast(room);
   });
 
+  // ── TOGGLE_TEAMS (QM only) ───────────────────────────────────────────
+  socket.on('TOGGLE_TEAMS', ({ enabled }) => {
+    const { roomId } = socket.data || {};
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const player = room.players.get(socket.id);
+    if (!player || player.role !== 'quizmaster') return;
+    room.teamsEnabled = !!enabled;
+    if (enabled) {
+      // Auto-assign all unassigned players to random teams
+      const playerIds = [...room.players.values()].filter(p => p.role === 'player').map(p => p.id);
+      const unassigned = playerIds.filter(pid => !room.playerTeams[pid]);
+      if (unassigned.length > 0 && Object.keys(room.teams).length === 0) {
+        // Create 2 default teams
+        for (let i = 0; i < 2; i++) {
+          const teamId = uuidv4().slice(0, 6);
+          room.teams[teamId] = { name: generateTeamName(Object.values(room.teams).map(t => t.name)) };
+        }
+      }
+      const teamIds = Object.keys(room.teams);
+      if (teamIds.length > 0) {
+        unassigned.forEach((pid, i) => {
+          room.playerTeams[pid] = teamIds[i % teamIds.length];
+        });
+      }
+    }
+    addHistory(room, { playerId: player.id, playerName: player.name, action: 'TOGGLE_TEAMS', detail: enabled ? 'Teams enabled' : 'Teams disabled' });
+    broadcast(room);
+  });
+
+  // ── SET_TEAM: QM assigns a player to a team ────────────────────────────
+  socket.on('SET_TEAM', ({ targetPlayerId, teamId }) => {
+    const { roomId } = socket.data || {};
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const player = room.players.get(socket.id);
+    if (!player || player.role !== 'quizmaster') return;
+    if (!room.teams[teamId]) return;
+    room.playerTeams[targetPlayerId] = teamId;
+    const target = [...room.players.values()].find(p => p.id === targetPlayerId);
+    addHistory(room, { playerId: player.id, playerName: player.name, action: 'SET_TEAM', detail: `${target?.name || targetPlayerId} → ${room.teams[teamId].name}` });
+    broadcast(room);
+  });
+
+  // ── CREATE_TEAM: QM creates a new team ─────────────────────────────────
+  socket.on('CREATE_TEAM', ({ name }) => {
+    const { roomId } = socket.data || {};
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const player = room.players.get(socket.id);
+    if (!player || player.role !== 'quizmaster') return;
+    const teamId = uuidv4().slice(0, 6);
+    const teamName = (name && name.trim()) ? name.trim().slice(0, 40) : generateTeamName(Object.values(room.teams).map(t => t.name));
+    room.teams[teamId] = { name: teamName };
+    addHistory(room, { playerId: player.id, playerName: player.name, action: 'CREATE_TEAM', detail: `Created team "${teamName}"` });
+    broadcast(room);
+  });
+
+  // ── RENAME_TEAM: QM renames a team ─────────────────────────────────────
+  socket.on('RENAME_TEAM', ({ teamId, name }) => {
+    const { roomId } = socket.data || {};
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const player = room.players.get(socket.id);
+    if (!player || player.role !== 'quizmaster') return;
+    if (!room.teams[teamId]) return;
+    const newName = (name && name.trim()) ? name.trim().slice(0, 40) : room.teams[teamId].name;
+    room.teams[teamId].name = newName;
+    broadcast(room);
+  });
+
+  // ── REMOVE_TEAM: QM removes a team (unassigns its players) ────────────
+  socket.on('REMOVE_TEAM', ({ teamId }) => {
+    const { roomId } = socket.data || {};
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const player = room.players.get(socket.id);
+    if (!player || player.role !== 'quizmaster') return;
+    if (!room.teams[teamId]) return;
+    const teamName = room.teams[teamId].name;
+    // Unassign players from this team
+    for (const [pid, tid] of Object.entries(room.playerTeams)) {
+      if (tid === teamId) delete room.playerTeams[pid];
+    }
+    delete room.teams[teamId];
+    addHistory(room, { playerId: player.id, playerName: player.name, action: 'REMOVE_TEAM', detail: `Removed team "${teamName}"` });
+    broadcast(room);
+  });
+
   // ── KICK_PLAYER (QM only) ──────────────────────────────────────────────
   socket.on('KICK_PLAYER', ({ targetPlayerId }) => {
     const { roomId } = socket.data || {};
@@ -471,6 +621,7 @@ io.on('connection', (socket) => {
     }
     room.players.delete(targetSocketId);
     delete room.scores[targetPlayerId];
+    delete room.playerTeams[targetPlayerId];
     broadcast(room);
   });
 
