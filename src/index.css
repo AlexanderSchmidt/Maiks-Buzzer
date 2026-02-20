@@ -49,3 +49,31 @@
 .mc-chip-submit {
   animation: mcChipSubmit 0.6s ease-out;
 }
+
+/* Reset flash animation */
+@keyframes resetFlash {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  15% {
+    transform: scale(1.03);
+    filter: brightness(1.4);
+  }
+  30% {
+    transform: scale(0.98);
+    filter: brightness(0.9);
+  }
+  50% {
+    transform: scale(1.01);
+    filter: brightness(1.2);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+.reset-flash {
+  animation: resetFlash 0.6s ease-out;
+}

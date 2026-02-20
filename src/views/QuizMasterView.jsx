@@ -26,8 +26,8 @@ import {
 } from 'lucide-react';
 import { SOUND_NAMES, loadSoundPrefs, saveSoundPrefs, resolveSoundId, playBuzzSound } from '../sounds';
 
-const MODES = ['BUZZER', 'MULTIPLE_CHOICE', 'GUESS', 'SEQUENCE'];
-const MODE_LABELS = { BUZZER: 'Buzzer', MULTIPLE_CHOICE: 'Multiple Choice', GUESS: 'Guess', SEQUENCE: 'Sequence' };
+const MODES = ['BUZZER', 'MULTIPLE_CHOICE', 'GUESS'];
+const MODE_LABELS = { BUZZER: 'Buzzer', MULTIPLE_CHOICE: 'Multiple Choice', GUESS: 'Guess' };
 
 export default function QuizMasterView({ store }) {
   const {
@@ -77,6 +77,13 @@ export default function QuizMasterView({ store }) {
   const [newTeamName, setNewTeamName] = useState('');
   const [editingTeam, setEditingTeam] = useState(null); // teamId being renamed
   const [editTeamName, setEditTeamName] = useState('');
+  const [resetFlash, setResetFlash] = useState(false);
+
+  const handleReset = () => {
+    resetRoom();
+    setResetFlash(true);
+    setTimeout(() => setResetFlash(false), 800);
+  };
 
   // Sound preferences (persisted in localStorage)
   const [muted, setMuted] = useState(() => loadSoundPrefs().qmMuted ?? false);
@@ -177,9 +184,6 @@ export default function QuizMasterView({ store }) {
       return String(val);
     }
     if (mode === 'GUESS') return String(val);
-    if (mode === 'SEQUENCE') {
-      return Array.isArray(val) ? val.join(', ') : String(val);
-    }
     return String(val);
   };
 
@@ -389,8 +393,21 @@ export default function QuizMasterView({ store }) {
 
       {/* Controls */}
       <div className="bg-gray-900 rounded-2xl p-4 mb-6 space-y-4">
-        <div className="flex items-center gap-2 text-sm font-semibold text-gray-300 uppercase tracking-wider">
-          <Settings className="w-4 h-4" /> Controls
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm font-semibold text-gray-300 uppercase tracking-wider">
+            <Settings className="w-4 h-4" /> Controls
+          </div>
+          <button
+            onClick={handleReset}
+            title="Reset All"
+            className={`flex items-center justify-center w-12 h-12 rounded-xl transition-all duration-300 ${
+              resetFlash
+                ? 'bg-red-500 ring-4 ring-red-400/60 shadow-xl shadow-red-500/30 reset-flash'
+                : 'bg-red-700 hover:bg-red-600 shadow-lg shadow-red-900/30 hover:shadow-red-700/40'
+            }`}
+          >
+            <RotateCcw className={`w-6 h-6 text-white transition-transform duration-500 ${resetFlash ? 'animate-spin' : ''}`} />
+          </button>
         </div>
 
         {/* Mode selector */}
@@ -432,7 +449,7 @@ export default function QuizMasterView({ store }) {
 
           <button
             onClick={() => toggleShowBuzz(!gameState.showBuzzToPlayers)}
-            title={gameState.showBuzzToPlayers ? 'Players can see their buzz rank' : 'Buzz rank is hidden from players'}
+            title={gameState.showBuzzToPlayers ? 'Players can see the buzz order' : 'Buzz order is hidden from players'}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               gameState.showBuzzToPlayers
                 ? 'bg-emerald-700 hover:bg-emerald-600'
@@ -440,15 +457,7 @@ export default function QuizMasterView({ store }) {
             }`}
           >
             <Eye className="w-4 h-4" />
-            {gameState.showBuzzToPlayers ? 'Buzz: Visible' : 'Buzz: Hidden'}
-          </button>
-
-          <button
-            onClick={resetRoom}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-700 hover:bg-red-600 text-sm font-medium transition-colors"
-          >
-            <RotateCcw className="w-4 h-4" />
-            Reset All
+            {gameState.showBuzzToPlayers ? 'Order: Visible' : 'Order: Hidden'}
           </button>
 
           <button
@@ -705,7 +714,7 @@ export default function QuizMasterView({ store }) {
                   </div>
                 )}
 
-                {/* Player answer (for MC/Slider/Sequence) */}
+                {/* Player answer (for MC/Slider) */}
                 {gameState.currentMode !== 'BUZZER' && answerText && (
                   <div className={`rounded-lg p-2 mb-2 text-sm ${answer?.submitted
                     ? 'bg-indigo-900/40 border border-indigo-500/30 text-indigo-300'

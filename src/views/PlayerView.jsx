@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Zap, Send, Type, Check, CheckCircle, Clock, LogOut, Volume2, VolumeX, Music, UsersRound, Lock } from 'lucide-react';
 import { SOUND_NAMES, loadSoundPrefs, saveSoundPrefs, resolveSoundId, playBuzzSound } from '../sounds';
 
-const MODE_LABELS = { BUZZER: 'Buzzer', MULTIPLE_CHOICE: 'Multiple Choice', GUESS: 'Guess', SEQUENCE: 'Sequence' };
+const MODE_LABELS = { BUZZER: 'Buzzer', MULTIPLE_CHOICE: 'Multiple Choice', GUESS: 'Guess' };
 
 export default function PlayerView({ store }) {
   const {
@@ -28,7 +28,7 @@ export default function PlayerView({ store }) {
   const [buzzRank, setBuzzRank] = useState(null);
   const [selectedMcIndex, setSelectedMcIndex] = useState(null);
   const [sliderValue, setSliderValue] = useState(null);
-  const [sequenceText, setSequenceText] = useState('');
+
   const [showHistory, setShowHistory] = useState(false);
   const throttleRef = useRef(null);
   const prevBuzzCountRef = useRef(0);
@@ -64,7 +64,6 @@ export default function PlayerView({ store }) {
   useEffect(() => {
     setSelectedMcIndex(null);
     setSliderValue(null);
-    setSequenceText('');
   }, [gameState.currentMode, gameState.mcOptionsLocked, gameState.sliderLocked]);
 
   // Reset all local inputs when QM clears
@@ -72,7 +71,6 @@ export default function PlayerView({ store }) {
     setLocalText('');
     setSelectedMcIndex(null);
     setSliderValue(null);
-    setSequenceText('');
   }, [gameState.clearGeneration]);
 
   // Initialize slider to midpoint when range is locked
@@ -131,12 +129,6 @@ export default function PlayerView({ store }) {
   const handleSliderSubmit = () => {
     if (sliderValue === null || isSubmitted) return;
     submitAnswer(sliderValue);
-  };
-
-  const handleSequenceSubmit = () => {
-    if (!sequenceText.trim() || isSubmitted) return;
-    const seq = sequenceText.split(',').map((s) => s.trim());
-    submitAnswer(seq);
   };
 
   // Sync sound selection to server
@@ -362,39 +354,6 @@ export default function PlayerView({ store }) {
             ) : (
               <div className="flex items-center gap-2 text-green-400 text-sm font-semibold">
                 <CheckCircle className="w-5 h-5" /> Answer submitted!
-              </div>
-            )}
-          </div>
-        );
-
-      case 'SEQUENCE':
-        return (
-          <div className="flex flex-col items-center gap-4 w-full max-w-md">
-            <h2 className="text-xl font-bold text-yellow-400">Sequence</h2>
-            <p className="text-sm text-gray-400">Enter comma-separated values in order</p>
-            <input
-              type="text"
-              value={sequenceText}
-              onChange={(e) => {
-                if (isSubmitted) return;
-                setSequenceText(e.target.value);
-                sendPreview(e.target.value.split(',').map((s) => s.trim()));
-              }}
-              disabled={isSubmitted}
-              placeholder="e.g. 1, 3, 5, 7"
-              className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 focus:border-yellow-500 focus:outline-none text-white disabled:opacity-50"
-            />
-            {!isSubmitted ? (
-              <button
-                onClick={handleSequenceSubmit}
-                disabled={!sequenceText.trim()}
-                className="px-8 py-3 rounded-xl bg-yellow-600 hover:bg-yellow-500 disabled:opacity-40 disabled:cursor-not-allowed font-bold transition-colors flex items-center gap-2"
-              >
-                <Send className="w-5 h-5" /> Submit Sequence
-              </button>
-            ) : (
-              <div className="flex items-center gap-2 text-green-400 text-sm font-semibold">
-                <CheckCircle className="w-5 h-5" /> Sequence submitted!
               </div>
             )}
           </div>

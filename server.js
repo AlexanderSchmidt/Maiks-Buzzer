@@ -40,7 +40,7 @@ function createRoom() {
     id,
     spectatorToken,
     gameState: {
-      currentMode: 'BUZZER', // BUZZER | MULTIPLE_CHOICE | GUESS | SEQUENCE
+      currentMode: 'BUZZER', // BUZZER | MULTIPLE_CHOICE | GUESS
       raceMode: false,      // false = "First wins" (lock after 1st), true = "Race" (all can buzz)
       showBuzzToPlayers: true, // whether players can see who buzzed first
       inputEnabled: false,
@@ -56,7 +56,7 @@ function createRoom() {
       sliderMax: 100,
       sliderLocked: false,  // true once QM confirms → shown to players
 
-      // Player answers (for MC, Guess, Sequence) { playerId: { preview, submitted, value } }
+      // Player answers (for MC, Guess) { playerId: { preview, submitted, value } }
       playerAnswers: {},
       clearGeneration: 0,
     },
@@ -321,7 +321,7 @@ io.on('connection', (socket) => {
     const player = room.players.get(socket.id);
     if (!player || player.role !== 'quizmaster') return;
 
-    const validModes = ['BUZZER', 'MULTIPLE_CHOICE', 'GUESS', 'SEQUENCE'];
+    const validModes = ['BUZZER', 'MULTIPLE_CHOICE', 'GUESS'];
     if (!validModes.includes(mode)) return;
 
     room.gameState.currentMode = mode;

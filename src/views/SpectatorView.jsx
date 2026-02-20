@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Eye, Trophy, Zap, MessageSquare, CheckCircle, Clock, LogOut, Users, UsersRound, Check } from 'lucide-react';
 
-const MODE_LABELS = { BUZZER: 'Buzzer', MULTIPLE_CHOICE: 'Multiple Choice', GUESS: 'Guess', SEQUENCE: 'Sequence' };
+const MODE_LABELS = { BUZZER: 'Buzzer', MULTIPLE_CHOICE: 'Multiple Choice', GUESS: 'Guess' };
 
 export default function SpectatorView({ store }) {
   const { roomId, gameState, players, leaveRoom, teams, playerTeams, teamsEnabled, teamScores } = store;
@@ -136,9 +136,6 @@ export default function SpectatorView({ store }) {
     }
     if (gameState.currentMode === 'GUESS') {
       return { label: `${val}`, submitted };
-    }
-    if (gameState.currentMode === 'SEQUENCE' && Array.isArray(val)) {
-      return { label: val.join(', '), submitted };
     }
     return { label: String(val), submitted };
   };
