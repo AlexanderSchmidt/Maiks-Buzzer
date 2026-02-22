@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   RotateCcw,
   ToggleLeft,
@@ -25,11 +26,12 @@ import {
   X,
 } from 'lucide-react';
 import { SOUND_NAMES, loadSoundPrefs, saveSoundPrefs, resolveSoundId, playBuzzSound } from '../sounds';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 
 const MODES = ['BUZZER', 'MULTIPLE_CHOICE', 'GUESS'];
-const MODE_LABELS = { BUZZER: 'Buzzer', MULTIPLE_CHOICE: 'Multiple Choice', GUESS: 'Guess' };
 
 export default function QuizMasterView({ store }) {
+  const { t } = useTranslation();
   const {
     roomId,
     gameState,
@@ -161,10 +163,10 @@ export default function QuizMasterView({ store }) {
   };
 
   const rankLabel = (rank) => {
-    if (rank === 1) return '🥇 1st';
-    if (rank === 2) return '🥈 2nd';
-    if (rank === 3) return '🥉 3rd';
-    return `#${rank}`;
+    if (rank === 1) return t('common.rank1');
+    if (rank === 2) return t('common.rank2');
+    if (rank === 3) return t('common.rank3');
+    return t('common.rankN', { rank });
   };
 
   const getPlayerAnswer = (playerId) => {
@@ -224,12 +226,12 @@ export default function QuizMasterView({ store }) {
         return (
           <div className="bg-gray-800/50 rounded-xl p-4 space-y-3">
             <h3 className="text-sm font-semibold text-purple-400 uppercase tracking-wider">
-              Multiple Choice Options
+              {t('quizmaster.mcOptions')}
             </h3>
             {gameState.mcOptionsLocked ? (
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-green-400 text-sm">
-                  <Lock className="w-4 h-4" /> Options locked — visible to players
+                  <Lock className="w-4 h-4" /> {t('quizmaster.optionsLocked')}
                 </div>
                 {gameState.mcOptions.map((opt, idx) => (
                   <div key={idx} className="px-3 py-2 bg-gray-700/50 rounded-lg text-sm">
@@ -249,7 +251,7 @@ export default function QuizMasterView({ store }) {
                       type="text"
                       value={opt}
                       onChange={(e) => handleOptionChange(idx, e.target.value)}
-                      placeholder={`Option ${String.fromCharCode(65 + idx)}`}
+                      placeholder={t('quizmaster.optionPlaceholder', { letter: String.fromCharCode(65 + idx) })}
                       className="flex-1 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 focus:outline-none text-white text-sm"
                     />
                     {localMcOptions.length > 2 && (
@@ -268,7 +270,7 @@ export default function QuizMasterView({ store }) {
                       onClick={handleAddOption}
                       className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm text-gray-400 transition-colors"
                     >
-                      <Plus className="w-3 h-3" /> Add Option
+                      <Plus className="w-3 h-3" /> {t('quizmaster.addOption')}
                     </button>
                   )}
                   <button
@@ -276,7 +278,7 @@ export default function QuizMasterView({ store }) {
                     disabled={localMcOptions.filter((o) => o.trim()).length < 2}
                     className="flex items-center gap-1 px-4 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-600 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium transition-colors"
                   >
-                    <Lock className="w-3 h-3" /> Confirm & Show to Players
+                    <Lock className="w-3 h-3" /> {t('quizmaster.confirmAndShow')}
                   </button>
                 </div>
               </>
@@ -288,15 +290,15 @@ export default function QuizMasterView({ store }) {
         return (
           <div className="bg-gray-800/50 rounded-xl p-4 space-y-3">
             <h3 className="text-sm font-semibold text-blue-400 uppercase tracking-wider">
-              Guess Range
+              {t('quizmaster.guessRange')}
             </h3>
             {gameState.sliderLocked ? (
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-green-400 text-sm">
-                  <Lock className="w-4 h-4" /> Range locked — visible to players
+                  <Lock className="w-4 h-4" /> {t('quizmaster.rangeLocked')}
                 </div>
                 <p className="text-sm text-gray-300">
-                  Range: <span className="font-mono text-blue-400">{gameState.sliderMin}</span>
+                  {t('quizmaster.range')}: <span className="font-mono text-blue-400">{gameState.sliderMin}</span>
                   {' → '}
                   <span className="font-mono text-blue-400">{gameState.sliderMax}</span>
                 </p>
@@ -304,7 +306,7 @@ export default function QuizMasterView({ store }) {
             ) : (
               <div className="flex flex-wrap items-end gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Min</label>
+                  <label className="block text-xs text-gray-500 mb-1">{t('quizmaster.min')}</label>
                   <input
                     type="number"
                     value={localSliderMin}
@@ -313,7 +315,7 @@ export default function QuizMasterView({ store }) {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Max</label>
+                  <label className="block text-xs text-gray-500 mb-1">{t('quizmaster.max')}</label>
                   <input
                     type="number"
                     value={localSliderMax}
@@ -326,7 +328,7 @@ export default function QuizMasterView({ store }) {
                   disabled={localSliderMin >= localSliderMax}
                   className="flex items-center gap-1 px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium transition-colors"
                 >
-                  <Lock className="w-3 h-3" /> Confirm & Show to Players
+                  <Lock className="w-3 h-3" /> {t('quizmaster.confirmAndShow')}
                 </button>
               </div>
             )}
@@ -348,7 +350,7 @@ export default function QuizMasterView({ store }) {
             Maik&apos;s Buzzer
           </h1>
           <p className="text-sm text-gray-400 mt-1">
-            Room:{' '}
+            {t('common.room')}:{' '}
             <span className="font-mono text-yellow-400 text-lg tracking-wider">
               {roomId}
             </span>
@@ -357,7 +359,7 @@ export default function QuizMasterView({ store }) {
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2 text-sm text-gray-400">
             <Users className="w-4 h-4" />
-            {playerList.length} player{playerList.length !== 1 && 's'}
+            {playerList.length} {playerList.length !== 1 ? t('common.players') : t('common.player')}
           </div>
           <button
             onClick={() => {
@@ -368,7 +370,7 @@ export default function QuizMasterView({ store }) {
             className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-800 hover:bg-green-700 text-xs font-medium transition-colors"
           >
             {copiedLink === 'player' ? <Check className="w-3 h-3" /> : <Link2 className="w-3 h-3" />}
-            {copiedLink === 'player' ? 'Copied!' : 'Copy Player Link'}
+            {copiedLink === 'player' ? t('quizmaster.copied') : t('quizmaster.copyPlayerLink')}
           </button>
           <button
             onClick={() => {
@@ -379,14 +381,15 @@ export default function QuizMasterView({ store }) {
             className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-xs font-medium transition-colors"
           >
             {copiedLink === 'spectator' ? <Check className="w-3 h-3" /> : <Link2 className="w-3 h-3" />}
-            {copiedLink === 'spectator' ? 'Copied!' : 'Copy Spectator Link'}
+            {copiedLink === 'spectator' ? t('quizmaster.copied') : t('quizmaster.copySpectatorLink')}
           </button>
+          <LanguageSwitcher />
           <button
             onClick={leaveRoom}
             className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-900 hover:bg-red-800 text-xs font-medium transition-colors"
           >
             <LogOut className="w-3 h-3" />
-            Leave
+            {t('common.leave')}
           </button>
         </div>
       </div>
@@ -395,11 +398,11 @@ export default function QuizMasterView({ store }) {
       <div className="bg-gray-900 rounded-2xl p-4 mb-6 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-sm font-semibold text-gray-300 uppercase tracking-wider">
-            <Settings className="w-4 h-4" /> Controls
+            <Settings className="w-4 h-4" /> {t('quizmaster.controls')}
           </div>
           <button
             onClick={handleReset}
-            title="Reset All"
+            title={t('common.reset')}
             className={`flex items-center justify-center w-12 h-12 rounded-xl transition-all duration-300 ${
               resetFlash
                 ? 'bg-red-500 ring-4 ring-red-400/60 shadow-xl shadow-red-500/30 reset-flash'
@@ -421,7 +424,7 @@ export default function QuizMasterView({ store }) {
                 : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
                 }`}
             >
-              {MODE_LABELS[mode] || mode}
+              {t(`modes.${mode}`)}
             </button>
           ))}
         </div>
@@ -430,7 +433,7 @@ export default function QuizMasterView({ store }) {
         <div className="flex flex-wrap gap-3">
           <button
             onClick={() => toggleRaceMode(!gameState.raceMode)}
-            title={gameState.raceMode ? 'Players compete to buzz first, with timestamps recorded' : 'First to buzz wins. All other buzzers are blocked until reset'}
+            title={gameState.raceMode ? t('quizmaster.raceMode') : t('quizmaster.soloMode')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${gameState.raceMode
               ? 'bg-orange-700 hover:bg-orange-600'
               : 'bg-cyan-800 hover:bg-cyan-700'
@@ -438,18 +441,18 @@ export default function QuizMasterView({ store }) {
           >
             {gameState.raceMode ? (
               <>
-                <Timer className="w-4 h-4" /> Race Mode
+                <Timer className="w-4 h-4" /> {t('quizmaster.raceMode')}
               </>
             ) : (
               <>
-                <Trophy className="w-4 h-4" /> Solo Mode
+                <Trophy className="w-4 h-4" /> {t('quizmaster.soloMode')}
               </>
             )}
           </button>
 
           <button
             onClick={() => toggleShowBuzz(!gameState.showBuzzToPlayers)}
-            title={gameState.showBuzzToPlayers ? 'Players can see the buzz order' : 'Buzz order is hidden from players'}
+            title={gameState.showBuzzToPlayers ? t('quizmaster.orderVisible') : t('quizmaster.orderHidden')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               gameState.showBuzzToPlayers
                 ? 'bg-emerald-700 hover:bg-emerald-600'
@@ -457,7 +460,7 @@ export default function QuizMasterView({ store }) {
             }`}
           >
             <Eye className="w-4 h-4" />
-            {gameState.showBuzzToPlayers ? 'Order: Visible' : 'Order: Hidden'}
+            {gameState.showBuzzToPlayers ? t('quizmaster.orderVisible') : t('quizmaster.orderHidden')}
           </button>
 
           <button
@@ -472,7 +475,7 @@ export default function QuizMasterView({ store }) {
             ) : (
               <ToggleLeft className="w-4 h-4" />
             )}
-            {gameState.inputEnabled ? 'Input: ON' : 'Input: OFF'}
+            {gameState.inputEnabled ? t('quizmaster.inputOn') : t('quizmaster.inputOff')}
           </button>
 
           <button
@@ -480,12 +483,12 @@ export default function QuizMasterView({ store }) {
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm font-medium transition-colors"
           >
             <Trash2 className="w-4 h-4" />
-            Clear Texts
+            {t('quizmaster.clearTexts')}
           </button>
 
           <button
             onClick={() => toggleTeams(!teamsEnabled)}
-            title={teamsEnabled ? 'Disable team mode' : 'Enable team mode'}
+            title={teamsEnabled ? t('quizmaster.teamsOn') : t('quizmaster.teamsOff')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               teamsEnabled
                 ? 'bg-pink-700 hover:bg-pink-600'
@@ -493,7 +496,7 @@ export default function QuizMasterView({ store }) {
             }`}
           >
             <UsersRound className="w-4 h-4" />
-            {teamsEnabled ? 'Teams: ON' : 'Teams: OFF'}
+            {teamsEnabled ? t('quizmaster.teamsOn') : t('quizmaster.teamsOff')}
           </button>
         </div>
 
@@ -506,7 +509,7 @@ export default function QuizMasterView({ store }) {
             }`}
           >
             {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-            {muted ? 'Muted' : 'Sound'}
+            {muted ? t('common.muted') : t('common.sound')}
           </button>
           <input
             type="range"
@@ -516,7 +519,7 @@ export default function QuizMasterView({ store }) {
             value={volume}
             onChange={(e) => handleVolumeChange(e.target.value)}
             className="w-24 accent-indigo-500"
-            title={`Volume: ${Math.round(volume * 100)}%`}
+            title={t('common.volumePercent', { percent: Math.round(volume * 100) })}
           />
           <select
             value={qmDefaultSound}
@@ -531,7 +534,7 @@ export default function QuizMasterView({ store }) {
             onClick={handleTestSound}
             className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs text-gray-400 hover:text-white transition-colors"
           >
-            Test
+            {t('common.test')}
           </button>
           <button
             onClick={handlePerPlayerToggle}
@@ -539,7 +542,7 @@ export default function QuizMasterView({ store }) {
               perPlayerSound ? 'bg-indigo-700 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
             }`}
           >
-            {perPlayerSound ? 'Per-Player Sound: ON' : 'Per-Player Sound: OFF'}
+            {perPlayerSound ? t('quizmaster.perPlayerSoundOn') : t('quizmaster.perPlayerSoundOff')}
           </button>
         </div>
 
@@ -555,7 +558,7 @@ export default function QuizMasterView({ store }) {
             className="flex items-center gap-2 text-sm font-semibold text-gray-300 uppercase tracking-wider w-full"
           >
             <UsersRound className="w-4 h-4 text-pink-400" />
-            Teams ({Object.keys(teams).length})
+            {t('quizmaster.teams', { count: Object.keys(teams).length })}
             <span className="ml-auto text-xs text-gray-600">{showTeams ? '▼' : '▶'}</span>
           </button>
           {showTeams && (
@@ -566,7 +569,7 @@ export default function QuizMasterView({ store }) {
                   type="text"
                   value={newTeamName}
                   onChange={(e) => setNewTeamName(e.target.value)}
-                  placeholder="Team name (leave blank for random)"
+                  placeholder={t('quizmaster.teamNamePlaceholder')}
                   className="flex-1 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 focus:border-pink-500 focus:outline-none text-white text-sm"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') { createTeam(newTeamName); setNewTeamName(''); }
@@ -576,7 +579,7 @@ export default function QuizMasterView({ store }) {
                   onClick={() => { createTeam(newTeamName); setNewTeamName(''); }}
                   className="flex items-center gap-1 px-4 py-2 rounded-lg bg-pink-700 hover:bg-pink-600 text-sm font-medium transition-colors"
                 >
-                  <Plus className="w-3 h-3" /> Add Team
+                  <Plus className="w-3 h-3" /> {t('quizmaster.addTeam')}
                 </button>
               </div>
 
@@ -602,18 +605,18 @@ export default function QuizMasterView({ store }) {
                           <span
                             className="font-semibold text-pink-300 cursor-pointer hover:underline"
                             onClick={() => { setEditingTeam(teamId); setEditTeamName(team.name); }}
-                            title="Click to rename"
+                            title={t('quizmaster.clickToRename')}
                           >
                             {team.name}
                           </span>
                         )}
-                        <span className="text-xs text-gray-500">({teamPlayers.length} player{teamPlayers.length !== 1 && 's'})</span>
-                        <span className="text-xs font-mono text-yellow-400">Score: {score}</span>
+                        <span className="text-xs text-gray-500">({teamPlayers.length} {teamPlayers.length !== 1 ? t('common.players') : t('common.player')})</span>
+                        <span className="text-xs font-mono text-yellow-400">{t('common.score')}: {score}</span>
                       </div>
                       <button
                         onClick={() => removeTeam(teamId)}
                         className="w-7 h-7 rounded-lg bg-gray-800 hover:bg-red-800 flex items-center justify-center text-gray-400 hover:text-white transition-colors"
-                        title="Remove team"
+                        title={t('quizmaster.removeTeam')}
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -625,7 +628,7 @@ export default function QuizMasterView({ store }) {
                         </span>
                       ))}
                       {teamPlayers.length === 0 && (
-                        <span className="text-xs text-gray-600 italic">No players</span>
+                        <span className="text-xs text-gray-600 italic">{t('quizmaster.noPlayers')}</span>
                       )}
                     </div>
                   </div>
@@ -633,7 +636,7 @@ export default function QuizMasterView({ store }) {
               })}
 
               {Object.keys(teams).length === 0 && (
-                <p className="text-gray-600 text-xs italic">No teams yet. Add one above.</p>
+                <p className="text-gray-600 text-xs italic">{t('quizmaster.noTeamsYet')}</p>
               )}
             </div>
           )}
@@ -644,9 +647,9 @@ export default function QuizMasterView({ store }) {
       {playerList.length === 0 ? (
         <div className="text-center text-gray-500 py-20">
           <Users className="w-12 h-12 mx-auto mb-4 opacity-40" />
-          <p className="text-lg">Waiting for players to join...</p>
+          <p className="text-lg">{t('quizmaster.waitingForPlayers')}</p>
           <p className="text-sm mt-1">
-            Share the room code: <span className="font-mono text-yellow-400">{roomId}</span>
+            {t('quizmaster.shareRoomCode', { code: roomId })}
           </p>
         </div>
       ) : (
@@ -694,7 +697,7 @@ export default function QuizMasterView({ store }) {
                 {/* Buzz time */}
                 <p className={`text-xs text-gray-400 mb-2 ${rank ? 'visible' : 'invisible'}`}>
                   {rank
-                    ? `Buzzed at ${new Date(gameState.buzzes[rank - 1].timestamp).toLocaleTimeString()}`
+                    ? t('quizmaster.buzzedAt', { time: new Date(gameState.buzzes[rank - 1].timestamp).toLocaleTimeString() })
                     : '\u00A0'}
                 </p>
 
@@ -706,7 +709,7 @@ export default function QuizMasterView({ store }) {
                       onChange={(e) => setTeam(player.id, e.target.value || null)}
                       className="w-full px-2 py-1 rounded-lg bg-gray-800 border border-gray-700 text-xs text-gray-300 focus:border-pink-500 focus:outline-none"
                     >
-                      <option value="">No team</option>
+                      <option value="">{t('quizmaster.noTeam')}</option>
                       {Object.entries(teams).map(([tid, t]) => (
                         <option key={tid} value={tid}>{t.name}</option>
                       ))}
@@ -721,7 +724,7 @@ export default function QuizMasterView({ store }) {
                     : 'bg-gray-800/40 text-gray-400 italic'
                     }`}>
                     <span className="text-xs text-gray-500 block">
-                      {answer?.submitted ? '✓ Submitted' : 'Previewing...'}
+                      {answer?.submitted ? t('quizmaster.submitted') : t('quizmaster.previewing')}
                     </span>
                     {answerText}
                   </div>
@@ -730,13 +733,13 @@ export default function QuizMasterView({ store }) {
                 {/* Player text */}
                 <div className="bg-gray-800/60 rounded-lg p-2 min-h-[40px] text-sm text-gray-300 mb-3 break-words">
                   {player.text || (
-                    <span className="text-gray-600 italic">No text</span>
+                    <span className="text-gray-600 italic">{t('quizmaster.noText')}</span>
                   )}
                 </div>
 
                 {/* Score controls */}
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-400">Score</span>
+                  <span className="text-sm text-gray-400">{t('common.score')}</span>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => updateScore(player.id, -1)}
@@ -762,7 +765,7 @@ export default function QuizMasterView({ store }) {
                     onClick={() => resetPlayer(player.id)}
                     className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs font-medium text-gray-300 transition-colors"
                   >
-                    <RotateCcw className="w-3 h-3" /> Reset
+                    <RotateCcw className="w-3 h-3" /> {t('common.reset')}
                   </button>
                   {confirmKick === player.id ? (
                     <div className="flex-1 flex gap-1">
@@ -770,13 +773,13 @@ export default function QuizMasterView({ store }) {
                         onClick={() => { kickPlayer(player.id); setConfirmKick(null); }}
                         className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-xs font-bold text-white transition-colors"
                       >
-                        Confirm
+                        {t('common.confirm')}
                       </button>
                       <button
                         onClick={() => setConfirmKick(null)}
                         className="flex-1 flex items-center justify-center px-2 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs font-medium text-gray-400 transition-colors"
                       >
-                        Cancel
+                        {t('common.cancel')}
                       </button>
                     </div>
                   ) : (
@@ -784,7 +787,7 @@ export default function QuizMasterView({ store }) {
                       onClick={() => setConfirmKick(player.id)}
                       className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-red-900/50 hover:bg-red-800 text-xs font-medium text-red-300 transition-colors"
                     >
-                      <UserX className="w-3 h-3" /> Kick
+                      <UserX className="w-3 h-3" /> {t('quizmaster.kick')}
                     </button>
                   )}
                 </div>
@@ -801,13 +804,13 @@ export default function QuizMasterView({ store }) {
           className="flex items-center gap-2 text-sm font-semibold text-gray-300 uppercase tracking-wider w-full"
         >
           <Eye className="w-4 h-4 text-gray-400" />
-          Spectators ({spectatorList.length})
+          {t('common.spectators')} ({spectatorList.length})
           <span className="ml-auto text-xs text-gray-600">{showSpectators ? '▼' : '▶'}</span>
         </button>
         {showSpectators && (
           <div className="mt-3 space-y-1">
             {spectatorList.length === 0 && (
-              <p className="text-gray-600 text-xs italic">No spectators</p>
+              <p className="text-gray-600 text-xs italic">{t('quizmaster.noSpectators')}</p>
             )}
             {spectatorList.map((spec) => (
               <div key={spec.id} className="flex items-center justify-between p-2 bg-gray-800/50 rounded-lg text-sm">
@@ -818,13 +821,13 @@ export default function QuizMasterView({ store }) {
                       onClick={() => { kickPlayer(spec.id); setConfirmKick(null); }}
                       className="px-2 py-1 rounded bg-red-700 hover:bg-red-600 text-xs font-bold text-white transition-colors"
                     >
-                      Confirm
+                      {t('common.confirm')}
                     </button>
                     <button
                       onClick={() => setConfirmKick(null)}
                       className="px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 text-xs text-gray-400 transition-colors"
                     >
-                      Cancel
+                      {t('common.cancel')}
                     </button>
                   </div>
                 ) : (
@@ -832,7 +835,7 @@ export default function QuizMasterView({ store }) {
                     onClick={() => setConfirmKick(spec.id)}
                     className="flex items-center gap-1 px-2 py-1 rounded bg-red-900/50 hover:bg-red-800 text-xs text-red-300 transition-colors"
                   >
-                    <UserX className="w-3 h-3" /> Kick
+                    <UserX className="w-3 h-3" /> {t('quizmaster.kick')}
                   </button>
                 )}
               </div>
@@ -848,13 +851,13 @@ export default function QuizMasterView({ store }) {
           className="flex items-center gap-2 text-sm font-semibold text-gray-300 uppercase tracking-wider w-full"
         >
           <Clock className="w-4 h-4 text-gray-400" />
-          History ({history.length})
+          {t('common.history')} ({history.length})
           <span className="ml-auto text-xs text-gray-600">{showHistory ? '▼' : '▶'}</span>
         </button>
         {showHistory && (
           <div className="mt-3 max-h-64 overflow-y-auto space-y-1">
             {history.length === 0 && (
-              <p className="text-gray-600 text-xs italic">No history yet</p>
+              <p className="text-gray-600 text-xs italic">{t('common.noHistoryYet')}</p>
             )}
             {[...history].reverse().map((entry) => (
               <div key={entry.id} className="flex items-start gap-3 text-xs p-2 bg-gray-800/50 rounded-lg">

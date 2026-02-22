@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Loader2, UserPlus, Eye } from 'lucide-react';
 import useQuizStore from '../hooks/useQuizStore';
 import PlayerView from '../views/PlayerView';
 import QuizMasterView from '../views/QuizMasterView';
 import SpectatorView from '../views/SpectatorView';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 
 const SESSION_KEY = 'buzzmaster_session';
 
@@ -28,6 +30,7 @@ export default function RoomPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const store = useQuizStore();
+  const { t } = useTranslation();
   const [joined, setJoined] = useState(false);
   const [needsName, setNeedsName] = useState(false);
   const [linkRole, setLinkRole] = useState(null);
@@ -106,19 +109,22 @@ export default function RoomPage() {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <div className="w-full max-w-sm space-y-6">
+          <div className="flex justify-end">
+            <LanguageSwitcher />
+          </div>
           <div className="text-center">
-            <h1 className="text-2xl font-bold mb-1">Join Room</h1>
+            <h1 className="text-2xl font-bold mb-1">{t('roomPage.joinRoom')}</h1>
             <p className="text-sm text-gray-500">
-              Room: <span className="font-mono text-yellow-400">{id}</span>
+              {t('common.room')}: <span className="font-mono text-yellow-400">{id}</span>
               {' · '}
               <span className="text-gray-400">
-                {linkRole === 'spectator' ? 'Spectator' : 'Player'}
+                {linkRole === 'spectator' ? t('common.spectator') : t('common.player')}
               </span>
             </p>
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1.5">
-              Your Name <span className="text-red-400">*</span>
+              {t('roomPage.yourName')} <span className="text-red-400">*</span>
             </label>
             <input
               type="text"
@@ -128,7 +134,7 @@ export default function RoomPage() {
                 if (e.target.value.trim()) setNameError(false);
               }}
               onKeyDown={(e) => e.key === 'Enter' && handleJoinFromLink()}
-              placeholder="Enter your name"
+              placeholder={t('roomPage.enterYourName')}
               autoFocus
               className={`w-full px-4 py-3 rounded-xl bg-gray-900 border focus:outline-none text-white placeholder-gray-600 transition-colors ${
                 nameError
@@ -137,7 +143,7 @@ export default function RoomPage() {
               }`}
             />
             {nameError && (
-              <p className="text-red-400 text-xs mt-1">Please enter your name.</p>
+              <p className="text-red-400 text-xs mt-1">{t('roomPage.nameRequired')}</p>
             )}
           </div>
           <button
@@ -149,7 +155,7 @@ export default function RoomPage() {
             ) : (
               <UserPlus className="w-5 h-5" />
             )}
-            {linkRole === 'spectator' ? 'Join as Spectator' : 'Join as Player'}
+            {linkRole === 'spectator' ? t('roomPage.joinAsSpectator') : t('roomPage.joinAsPlayer')}
           </button>
         </div>
       </div>
@@ -160,12 +166,12 @@ export default function RoomPage() {
   if (store.kicked) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-4">
-        <p className="text-red-400 text-lg">You have been kicked from the room.</p>
+        <p className="text-red-400 text-lg">{t('roomPage.kicked')}</p>
         <button
           onClick={() => { store.clearKicked(); navigate('/'); }}
           className="px-6 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 transition-colors"
         >
-          Back to Home
+          {t('common.backToHome')}
         </button>
       </div>
     );
@@ -180,7 +186,7 @@ export default function RoomPage() {
           onClick={() => navigate('/')}
           className="px-6 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 transition-colors"
         >
-          Back to Home
+          {t('common.backToHome')}
         </button>
       </div>
     );
@@ -196,7 +202,7 @@ export default function RoomPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-3">
         <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
-        <p className="text-gray-500">Joining room {id}...</p>
+        <p className="text-gray-500">{t('roomPage.joiningRoom', { id })}</p>
       </div>
     );
   }

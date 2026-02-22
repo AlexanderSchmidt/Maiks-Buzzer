@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Zap, ArrowRight, UserPlus, Crown } from 'lucide-react';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 
 const SESSION_KEY = 'buzzmaster_session';
 
@@ -15,6 +17,7 @@ export default function HomePage() {
   const [roomCode, setRoomCode] = useState('');
   const [nameError, setNameError] = useState(false);
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const validateName = () => {
     if (!name.trim()) {
@@ -46,6 +49,11 @@ export default function HomePage() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-8">
+        {/* Language switcher */}
+        <div className="flex justify-end">
+          <LanguageSwitcher />
+        </div>
+
         {/* Logo */}
         <div className="text-center">
           <div className="flex items-center justify-center gap-3 mb-3">
@@ -54,15 +62,15 @@ export default function HomePage() {
             </div>
           </div>
           <h1 className="text-4xl font-extrabold tracking-tight">
-            Maik&apos;s <span className="text-yellow-400">Buzzer</span>
+            {t('home.title')}&nbsp;<span className="text-yellow-400">{t('home.titleHighlight')}</span>
           </h1>
-          <p className="text-gray-500 mt-2">Real-time Quiz Buzzer</p>
+          <p className="text-gray-500 mt-2">{t('home.subtitle')}</p>
         </div>
 
         {/* Name input */}
         <div>
           <label className="block text-sm text-gray-400 mb-1.5">
-            Your Name <span className="text-red-400">*</span>
+            {t('home.yourName')} <span className="text-red-400">*</span>
           </label>
           <input
             type="text"
@@ -71,7 +79,7 @@ export default function HomePage() {
               setName(e.target.value);
               if (e.target.value.trim()) setNameError(false);
             }}
-            placeholder="Enter your name"
+            placeholder={t('home.enterYourName')}
             className={`w-full px-4 py-3 rounded-xl bg-gray-900 border focus:outline-none text-white placeholder-gray-600 transition-colors ${
               nameError
                 ? 'border-red-500 focus:border-red-400'
@@ -79,7 +87,7 @@ export default function HomePage() {
             }`}
           />
           {nameError && (
-            <p className="text-red-400 text-xs mt-1">Please enter your name to continue.</p>
+            <p className="text-red-400 text-xs mt-1">{t('home.nameRequired')}</p>
           )}
         </div>
 
@@ -89,24 +97,24 @@ export default function HomePage() {
           className="w-full flex items-center justify-center gap-2 px-4 py-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-lg transition-all shadow-lg shadow-indigo-500/20"
         >
           <Crown className="w-5 h-5" />
-          Create Room (Quiz Master)
+          {t('home.createRoom')}
         </button>
 
         {/* Divider */}
         <div className="flex items-center gap-3">
           <div className="flex-1 h-px bg-gray-800" />
-          <span className="text-sm text-gray-600 uppercase">or join</span>
+          <span className="text-sm text-gray-600 uppercase">{t('home.orJoin')}</span>
           <div className="flex-1 h-px bg-gray-800" />
         </div>
 
         {/* Join Room */}
         <div className="space-y-3">
-          <label className="block text-sm text-gray-400 mb-1.5">Room Code</label>
+          <label className="block text-sm text-gray-400 mb-1.5">{t('home.roomCode')}</label>
           <input
             type="text"
             value={roomCode}
             onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-            placeholder="e.g. A1B2C3"
+            placeholder={t('home.roomCodePlaceholder')}
             maxLength={6}
             className="w-full px-4 py-3 rounded-xl bg-gray-900 border border-gray-800 focus:border-yellow-500 focus:outline-none text-white text-center text-2xl font-mono tracking-[0.3em] placeholder-gray-600 placeholder:text-base placeholder:tracking-normal"
           />
@@ -117,9 +125,9 @@ export default function HomePage() {
             className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-green-700 hover:bg-green-600 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed font-semibold transition-colors"
           >
             <UserPlus className="w-4 h-4" />
-            Join as Player
+            {t('home.joinAsPlayer')}
           </button>
-          <p className="text-xs text-gray-600 text-center">Spectators join via the secure link from the Quiz Master</p>
+          <p className="text-xs text-gray-600 text-center">{t('home.spectatorHint')}</p>
         </div>
       </div>
     </div>

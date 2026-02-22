@@ -17,9 +17,12 @@
   "type": "commonjs",
   "dependencies": {
     "express": "^5.2.1",
+    "i18next": "^25.8.13",
+    "i18next-browser-languagedetector": "^8.2.1",
     "lucide-react": "^0.564.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-i18next": "^16.5.4",
     "react-router-dom": "^7.13.0",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",

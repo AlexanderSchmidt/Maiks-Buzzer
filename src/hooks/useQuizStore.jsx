@@ -53,6 +53,7 @@ const QuizContext = createContext(null);
 export function QuizProvider({ children }) {
   const [state, setState] = useState(INITIAL_STATE);
   const throttleRef = useRef(null);
+  const pendingTextRef = useRef(null);
   const reconnectedRef = useRef(false);
 
   useEffect(() => {
@@ -169,11 +170,18 @@ export function QuizProvider({ children }) {
   }, []);
 
   const textUpdate = useCallback((text) => {
-    // Throttle: max every 100ms
-    if (throttleRef.current) return;
+    // Throttle: max every 100ms, but always flush the latest value
+    if (throttleRef.current) {
+      pendingTextRef.current = text;
+      return;
+    }
     socket.emit('TEXT_UPDATE', { text });
     throttleRef.current = setTimeout(() => {
       throttleRef.current = null;
+      if (pendingTextRef.current !== null) {
+        socket.emit('TEXT_UPDATE', { text: pendingTextRef.current });
+        pendingTextRef.current = null;
+      }
     }, 100);
   }, []);
 

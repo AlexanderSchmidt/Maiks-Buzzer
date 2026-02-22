@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import useQuizStore from '../hooks/useQuizStore';
 import QuizMasterView from '../views/QuizMasterView';
@@ -59,10 +60,15 @@ export default function CreateRoomPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-3">
         <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
-        <p className="text-gray-500">Creating room...</p>
+        <CreateRoomLoading />
       </div>
     );
   }
 
   return <QuizMasterView store={store} />;
+}
+
+function CreateRoomLoading() {
+  const { t } = useTranslation();
+  return <p className="text-gray-500">{t('createRoom.creatingRoom')}</p>;
 }

@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Eye, Trophy, Zap, MessageSquare, CheckCircle, Clock, LogOut, Users, UsersRound, Check } from 'lucide-react';
-
-const MODE_LABELS = { BUZZER: 'Buzzer', MULTIPLE_CHOICE: 'Multiple Choice', GUESS: 'Guess' };
+import LanguageSwitcher from '../components/LanguageSwitcher';
 
 export default function SpectatorView({ store }) {
+  const { t } = useTranslation();
   const { roomId, gameState, players, leaveRoom, teams, playerTeams, teamsEnabled, teamScores } = store;
   const history = store.history || [];
 
@@ -147,27 +148,30 @@ export default function SpectatorView({ store }) {
         <div className="flex items-center gap-3">
           <Eye className="w-6 h-6 text-purple-400" />
           <div>
-            <h1 className="text-xl font-bold">Spectator View</h1>
+            <h1 className="text-xl font-bold">{t('spectator.spectatorView')}</h1>
             <p className="text-xs text-gray-500">
-              Room: <span className="font-mono text-purple-400">{roomId}</span>
+              {t('common.room')}: <span className="font-mono text-purple-400">{roomId}</span>
               {' · '}
               <span className={`inline-block transition-all duration-500 ${modeFlash ? 'text-indigo-300 scale-110 font-bold' : ''}`}>
-                Mode: {MODE_LABELS[gameState.currentMode] || gameState.currentMode}
+                {t('common.mode')}: {t(`modes.${gameState.currentMode}`)}
               </span>
-              {' · '}{gameState.raceMode ? 'Race' : 'First Wins'}
+              {' · '}{gameState.raceMode ? t('spectator.race') : t('spectator.firstWins')}
               {' · '}
               <span className={`inline-block transition-all duration-500 ${inputFlash ? (gameState.inputEnabled ? 'text-green-400 font-bold' : 'text-red-400 font-bold') : ''}`}>
-                Input: {gameState.inputEnabled ? 'ON' : 'OFF'}
+                {t('spectator.input')}: {gameState.inputEnabled ? t('spectator.inputOn') : t('spectator.inputOff')}
               </span>
             </p>
           </div>
         </div>
-        <button
-          onClick={leaveRoom}
-          className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-900 hover:bg-red-800 text-xs font-medium transition-colors"
-        >
-          <LogOut className="w-3 h-3" /> Leave
-        </button>
+        <div className="flex items-center gap-2">
+          <LanguageSwitcher />
+          <button
+            onClick={leaveRoom}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-900 hover:bg-red-800 text-xs font-medium transition-colors"
+          >
+            <LogOut className="w-3 h-3" /> {t('common.leave')}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -175,10 +179,10 @@ export default function SpectatorView({ store }) {
         <div className="bg-gray-900 rounded-2xl p-4">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">
             <Trophy className="w-4 h-4 text-yellow-400" />
-            Leaderboard
+            {t('spectator.leaderboard')}
           </h2>
           {leaderboard.length === 0 ? (
-            <p className="text-gray-600 italic text-sm">No players yet</p>
+            <p className="text-gray-600 italic text-sm">{t('spectator.noPlayersYet')}</p>
           ) : (
             <div className="space-y-2">
               {leaderboard.map((player, idx) => {
@@ -210,7 +214,7 @@ export default function SpectatorView({ store }) {
                       )}
                       {rank && (
                         <span className="text-xs bg-green-800/40 text-green-400 px-2 py-0.5 rounded-full">
-                          Buzzed {rankLabel(rank)}
+                          {t('spectator.buzzed')} {rankLabel(rank)}
                         </span>
                       )}
                     </div>
@@ -234,7 +238,7 @@ export default function SpectatorView({ store }) {
         <div className="bg-gray-900 rounded-2xl p-4">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">
             <MessageSquare className="w-4 h-4 text-blue-400" />
-            Live Answers
+            {t('quizmaster.liveAnswers')}
           </h2>
 
           {/* ── Multiple Choice: option-centric view ──────────────── */}
@@ -272,7 +276,7 @@ export default function SpectatorView({ store }) {
                         <span className={`flex items-center justify-center w-8 h-8 rounded-lg font-bold text-sm text-white ${c.badge} shadow-lg`}>
                           {String.fromCharCode(65 + idx)}
                         </span>
-                        <span className={`font-semibold ${c.text}`}>{opt || <span className="italic text-gray-500">empty</span>}</span>
+                        <span className={`font-semibold ${c.text}`}>{opt || <span className="italic text-gray-500">—</span>}</span>
                         {/* Player count pill */}
                         <span className={`ml-auto text-xs font-mono px-2 py-0.5 rounded-full ${
                           selecting.length > 0 ? `${c.badge} text-white` : 'bg-gray-800 text-gray-500'
@@ -284,7 +288,7 @@ export default function SpectatorView({ store }) {
                       {/* Player chips */}
                       <div className="flex flex-wrap gap-2 min-h-[28px]">
                         {selecting.length === 0 && (
-                          <span className="text-xs text-gray-600 italic">No selections yet</span>
+                          <span className="text-xs text-gray-600 italic">{t('quizmaster.noSelectionsYet')}</span>
                         )}
                         {selecting.map((player) => {
                           const pa = gameState.playerAnswers?.[player.id];
@@ -338,21 +342,21 @@ export default function SpectatorView({ store }) {
                 return (
                   <div className="flex items-center gap-4 mt-2 pt-3 border-t border-gray-800">
                     <span className="text-xs text-gray-500">
-                      <span className="font-mono text-gray-300">{answered}</span>/{totalPlayers} answered
+                      <span className="font-mono text-gray-300">{answered}</span>/{totalPlayers} {t('quizmaster.answered', { count: answered, total: totalPlayers }).split('/').pop()}
                     </span>
                     <span className="text-xs text-gray-500">
-                      <span className="font-mono text-green-400">{submitted}</span> submitted
+                      <span className="font-mono text-green-400">{submitted}</span> {t('quizmaster.submittedCount', { count: submitted }).split(' ').pop()}
                     </span>
                     <div className="ml-auto flex items-center gap-3 text-[10px] text-gray-600">
-                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> Submitted</span>
-                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse inline-block" /> Selecting</span>
+                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" /> {t('quizmaster.submittedLabel')}</span>
+                      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse inline-block" /> {t('quizmaster.selecting')}</span>
                     </div>
                   </div>
                 );
               })()}
             </div>
           ) : playerList.length === 0 ? (
-            <p className="text-gray-600 italic text-sm">No players yet</p>
+            <p className="text-gray-600 italic text-sm">{t('spectator.noPlayersYet')}</p>
           ) : (
             <div className="space-y-2">
               {playerList.map((player) => {
@@ -397,7 +401,7 @@ export default function SpectatorView({ store }) {
                             <CheckCircle className="w-3.5 h-3.5 text-green-500 shrink-0" />
                           )}
                           {!ans.submitted && (
-                            <span className="text-[10px] text-yellow-600">(preview)</span>
+                            <span className="text-[10px] text-yellow-600">({t('quizmaster.preview')})</span>
                           )}
                         </div>
                       ) : (
@@ -421,7 +425,7 @@ export default function SpectatorView({ store }) {
         <div className="mt-6 bg-gray-900 rounded-2xl p-4">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">
             <Zap className="w-4 h-4 text-red-400" />
-            Buzz Order {gameState.raceMode && <span className="text-xs text-gray-500 ml-2">(Race Mode)</span>}
+            {t('spectator.buzzTimeline')} {gameState.raceMode && <span className="text-xs text-gray-500 ml-2">({t('quizmaster.raceMode')})</span>}
           </h2>
           <div className="flex flex-wrap gap-3">
             {gameState.buzzes.map((buzz, idx) => {
@@ -460,7 +464,7 @@ export default function SpectatorView({ store }) {
         <div className="mt-6 bg-gray-900 rounded-2xl p-4">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">
             <UsersRound className="w-4 h-4 text-pink-400" />
-            Team Scores
+            {t('spectator.teamScores')}
           </h2>
           <div className="flex flex-wrap gap-3">
             {Object.entries(teams)
@@ -478,7 +482,7 @@ export default function SpectatorView({ store }) {
                   >
                     <span className="font-semibold text-pink-300">{team.name}</span>
                     <span className="font-mono font-bold text-yellow-400 text-lg">{teamScores?.[teamId] ?? 0}</span>
-                    <span className="text-xs text-gray-500">({memberCount} player{memberCount !== 1 ? 's' : ''})</span>
+                    <span className="text-xs text-gray-500">({memberCount} {memberCount !== 1 ? t('common.players') : t('common.player')})</span>
                   </div>
                 );
               })}
@@ -490,10 +494,10 @@ export default function SpectatorView({ store }) {
       <div className="bg-gray-900 rounded-2xl p-4 mt-6">
         <div className="flex items-center gap-2 text-sm font-semibold text-gray-300 uppercase tracking-wider mb-3">
           <Users className="w-4 h-4 text-gray-400" />
-          Spectators ({spectatorList.length})
+          {t('common.spectators')} ({spectatorList.length})
         </div>
         {spectatorList.length === 0 ? (
-          <p className="text-gray-600 text-xs italic">No spectators</p>
+          <p className="text-gray-600 text-xs italic">{t('quizmaster.noSpectators')}</p>
         ) : (
           <div className="space-y-1">
             {spectatorList.map((spec) => (
@@ -512,6 +516,7 @@ export default function SpectatorView({ store }) {
 }
 
 function HistoryPanel({ history }) {
+  const { t } = useTranslation();
   const [show, setShow] = useState(false);
   return (
     <div className="bg-gray-900 rounded-2xl p-4 mt-6">
@@ -520,13 +525,13 @@ function HistoryPanel({ history }) {
         className="flex items-center gap-2 text-sm font-semibold text-gray-300 uppercase tracking-wider w-full"
       >
         <Clock className="w-4 h-4 text-gray-400" />
-        History ({history.length})
+        {t('common.history')} ({history.length})
         <span className="ml-auto text-xs text-gray-600">{show ? '\u25bc' : '\u25b6'}</span>
       </button>
       {show && (
         <div className="mt-3 max-h-64 overflow-y-auto space-y-1">
           {history.length === 0 && (
-            <p className="text-gray-600 text-xs italic">No history yet</p>
+            <p className="text-gray-600 text-xs italic">{t('common.noHistoryYet')}</p>
           )}
           {[...history].reverse().map((entry) => (
             <div key={entry.id} className="flex items-start gap-3 text-xs p-2 bg-gray-800/50 rounded-lg">
