@@ -10,7 +10,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin: 'https://buzzer.saug.cloud',
     methods: ['GET', 'POST'],
   },
 });
@@ -32,7 +32,7 @@ function generateTeamName(existingNames = []) {
 
 // ─── In-Memory Room Store ────────────────────────────────────────────────────
 const rooms = new Map();
-const DISCONNECT_GRACE_MS = 60_000; // 60 seconds grace period for reconnection
+const DISCONNECT_GRACE_MS = 600_000; // 10 minutes grace period for reconnection
 
 function createRoom() {
   const id = uuidv4().slice(0, 6).toUpperCase();
