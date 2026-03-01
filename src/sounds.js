@@ -3,7 +3,6 @@
 export const SOUND_COUNT = 9;
 
 export const SOUND_NAMES = [
-  'Random',       // 0 = random
   'Buzz 1',       // 1
   'Buzz 2',       // 2
   'Buzz 3',       // 3

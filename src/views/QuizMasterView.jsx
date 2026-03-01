@@ -23,6 +23,7 @@ import {
   Volume2,
   VolumeX,
   UsersRound,
+  Music,
   X,
 } from 'lucide-react';
 import { SOUND_NAMES, loadSoundPrefs, saveSoundPrefs, resolveSoundId, playBuzzSound } from '../sounds';
@@ -61,6 +62,8 @@ export default function QuizMasterView({ store }) {
     leaveRoom,
     kickPlayer,
     resetPlayer,
+    setPlayerSound,
+    generateTakeoverToken,
   } = store;
 
   const history = store.history || [];
@@ -93,6 +96,11 @@ export default function QuizMasterView({ store }) {
   const [perPlayerSound, setPerPlayerSound] = useState(() => loadSoundPrefs().perPlayerSound ?? true);
   const [qmDefaultSound, setQmDefaultSound] = useState(() => loadSoundPrefs().qmDefaultSound ?? 1);
   const prevBuzzIdsRef = useRef(new Set());
+
+  // Compute which sound IDs are already assigned to players (for filtering in per-player dropdowns)
+  const assignedSoundIds = new Set(
+    playerList.filter((p) => p.soundId >= 1 && p.soundId <= 9).map((p) => p.soundId)
+  );
 
   // Play sound when new buzzes arrive
   useEffect(() => {
@@ -142,8 +150,8 @@ export default function QuizMasterView({ store }) {
     saveSoundPrefs({ ...loadSoundPrefs(), qmDefaultSound: id });
   };
 
-  const handleTestSound = () => {
-    if (!muted) playBuzzSound(resolveSoundId(qmDefaultSound), volume);
+  const handleTestPlayerSound = (soundId) => {
+    if (!muted) playBuzzSound(soundId, volume);
   };
 
   const getBuzzRank = (playerId) => {
@@ -257,6 +265,7 @@ export default function QuizMasterView({ store }) {
                     {localMcOptions.length > 2 && (
                       <button
                         onClick={() => handleRemoveOption(idx)}
+                        title={t('tooltips.removeOption')}
                         className="w-8 h-8 rounded-lg bg-gray-800 hover:bg-red-800 flex items-center justify-center text-gray-400 hover:text-white transition-colors"
                       >
                         <Minus className="w-3 h-3" />
@@ -268,6 +277,7 @@ export default function QuizMasterView({ store }) {
                   {localMcOptions.length < 4 && (
                     <button
                       onClick={handleAddOption}
+                      title={t('tooltips.addOption')}
                       className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm text-gray-400 transition-colors"
                     >
                       <Plus className="w-3 h-3" /> {t('quizmaster.addOption')}
@@ -276,6 +286,7 @@ export default function QuizMasterView({ store }) {
                   <button
                     onClick={handleConfirmMc}
                     disabled={localMcOptions.filter((o) => o.trim()).length < 2}
+                    title={t('tooltips.confirmMc')}
                     className="flex items-center gap-1 px-4 py-1.5 rounded-lg bg-purple-700 hover:bg-purple-600 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium transition-colors"
                   >
                     <Lock className="w-3 h-3" /> {t('quizmaster.confirmAndShow')}
@@ -326,6 +337,7 @@ export default function QuizMasterView({ store }) {
                 <button
                   onClick={handleConfirmSlider}
                   disabled={localSliderMin >= localSliderMax}
+                  title={t('tooltips.confirmSlider')}
                   className="flex items-center gap-1 px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium transition-colors"
                 >
                   <Lock className="w-3 h-3" /> {t('quizmaster.confirmAndShow')}
@@ -367,6 +379,7 @@ export default function QuizMasterView({ store }) {
               setCopiedLink('player');
               setTimeout(() => setCopiedLink(null), 2000);
             }}
+            title={t('tooltips.copyPlayerLink')}
             className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-800 hover:bg-green-700 text-xs font-medium transition-colors"
           >
             {copiedLink === 'player' ? <Check className="w-3 h-3" /> : <Link2 className="w-3 h-3" />}
@@ -378,6 +391,7 @@ export default function QuizMasterView({ store }) {
               setCopiedLink('spectator');
               setTimeout(() => setCopiedLink(null), 2000);
             }}
+            title={t('tooltips.copySpectatorLink')}
             className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-xs font-medium transition-colors"
           >
             {copiedLink === 'spectator' ? <Check className="w-3 h-3" /> : <Link2 className="w-3 h-3" />}
@@ -386,6 +400,7 @@ export default function QuizMasterView({ store }) {
           <LanguageSwitcher />
           <button
             onClick={leaveRoom}
+            title={t('tooltips.leaveRoom')}
             className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-900 hover:bg-red-800 text-xs font-medium transition-colors"
           >
             <LogOut className="w-3 h-3" />
@@ -402,7 +417,7 @@ export default function QuizMasterView({ store }) {
           </div>
           <button
             onClick={handleReset}
-            title={t('common.reset')}
+            title={t('tooltips.resetRoom')}
             className={`flex items-center justify-center w-12 h-12 rounded-xl transition-all duration-300 ${
               resetFlash
                 ? 'bg-red-500 ring-4 ring-red-400/60 shadow-xl shadow-red-500/30 reset-flash'
@@ -419,6 +434,7 @@ export default function QuizMasterView({ store }) {
             <button
               key={mode}
               onClick={() => changeMode(mode)}
+              title={t(`tooltips.mode${mode === 'BUZZER' ? 'Buzzer' : mode === 'MULTIPLE_CHOICE' ? 'MC' : 'Guess'}`)}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${gameState.currentMode === mode
                 ? 'bg-indigo-600 text-white'
                 : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
@@ -433,7 +449,7 @@ export default function QuizMasterView({ store }) {
         <div className="flex flex-wrap gap-3">
           <button
             onClick={() => toggleRaceMode(!gameState.raceMode)}
-            title={gameState.raceMode ? t('quizmaster.raceMode') : t('quizmaster.soloMode')}
+            title={gameState.raceMode ? t('tooltips.raceMode') : t('tooltips.soloMode')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${gameState.raceMode
               ? 'bg-orange-700 hover:bg-orange-600'
               : 'bg-cyan-800 hover:bg-cyan-700'
@@ -452,7 +468,7 @@ export default function QuizMasterView({ store }) {
 
           <button
             onClick={() => toggleShowBuzz(!gameState.showBuzzToPlayers)}
-            title={gameState.showBuzzToPlayers ? t('quizmaster.orderVisible') : t('quizmaster.orderHidden')}
+            title={gameState.showBuzzToPlayers ? t('tooltips.orderVisible') : t('tooltips.orderHidden')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               gameState.showBuzzToPlayers
                 ? 'bg-emerald-700 hover:bg-emerald-600'
@@ -465,6 +481,7 @@ export default function QuizMasterView({ store }) {
 
           <button
             onClick={() => toggleInput(!gameState.inputEnabled)}
+            title={gameState.inputEnabled ? t('tooltips.inputOn') : t('tooltips.inputOff')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${gameState.inputEnabled
               ? 'bg-green-700 hover:bg-green-600'
               : 'bg-gray-700 hover:bg-gray-600'
@@ -480,6 +497,7 @@ export default function QuizMasterView({ store }) {
 
           <button
             onClick={clearTexts}
+            title={t('tooltips.clearTexts')}
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-sm font-medium transition-colors"
           >
             <Trash2 className="w-4 h-4" />
@@ -488,7 +506,7 @@ export default function QuizMasterView({ store }) {
 
           <button
             onClick={() => toggleTeams(!teamsEnabled)}
-            title={teamsEnabled ? t('quizmaster.teamsOn') : t('quizmaster.teamsOff')}
+            title={teamsEnabled ? t('tooltips.teamsOn') : t('tooltips.teamsOff')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               teamsEnabled
                 ? 'bg-pink-700 hover:bg-pink-600'
@@ -504,6 +522,7 @@ export default function QuizMasterView({ store }) {
         <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-800">
           <button
             onClick={handleMuteToggle}
+            title={muted ? t('tooltips.unmuteSound') : t('tooltips.muteSound')}
             className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
               muted ? 'bg-red-900/60 text-red-400' : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
             }`}
@@ -521,23 +540,23 @@ export default function QuizMasterView({ store }) {
             className="w-24 accent-indigo-500"
             title={t('common.volumePercent', { percent: Math.round(volume * 100) })}
           />
-          <select
-            value={qmDefaultSound}
-            onChange={(e) => handleDefaultSoundChange(e.target.value)}
-            className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-indigo-500"
-          >
-            {SOUND_NAMES.map((name, idx) => (
-              <option key={idx} value={idx}>{name}</option>
-            ))}
-          </select>
-          <button
-            onClick={handleTestSound}
-            className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs text-gray-400 hover:text-white transition-colors"
-          >
-            {t('common.test')}
-          </button>
+          {!perPlayerSound && (
+            <>
+              <select
+                value={qmDefaultSound}
+                onChange={(e) => handleDefaultSoundChange(e.target.value)}
+                title={t('tooltips.defaultSound')}
+                className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-indigo-500"
+              >
+                {SOUND_NAMES.map((name, idx) => (
+                  <option key={idx + 1} value={idx + 1}>{name}</option>
+                ))}
+              </select>
+            </>
+          )}
           <button
             onClick={handlePerPlayerToggle}
+            title={perPlayerSound ? t('tooltips.perPlayerSoundOn') : t('tooltips.perPlayerSoundOff')}
             className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
               perPlayerSound ? 'bg-indigo-700 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
             }`}
@@ -577,6 +596,7 @@ export default function QuizMasterView({ store }) {
                 />
                 <button
                   onClick={() => { createTeam(newTeamName); setNewTeamName(''); }}
+                  title={t('tooltips.addTeam')}
                   className="flex items-center gap-1 px-4 py-2 rounded-lg bg-pink-700 hover:bg-pink-600 text-sm font-medium transition-colors"
                 >
                   <Plus className="w-3 h-3" /> {t('quizmaster.addTeam')}
@@ -616,7 +636,7 @@ export default function QuizMasterView({ store }) {
                       <button
                         onClick={() => removeTeam(teamId)}
                         className="w-7 h-7 rounded-lg bg-gray-800 hover:bg-red-800 flex items-center justify-center text-gray-400 hover:text-white transition-colors"
-                        title={t('quizmaster.removeTeam')}
+                        title={t('tooltips.removeTeam')}
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -663,7 +683,7 @@ export default function QuizMasterView({ store }) {
             return (
               <div
                 key={player.id}
-                className={`rounded-2xl p-4 border transition-all duration-300 ${rank === 1
+                className={`rounded-2xl p-4 border transition-all duration-300 ${player.connected === false ? 'opacity-50 ' : ''}${rank === 1
                   ? 'bg-yellow-900/30 border-yellow-500/50 shadow-lg shadow-yellow-500/10'
                   : rank
                     ? 'bg-green-900/20 border-green-700/40'
@@ -674,8 +694,9 @@ export default function QuizMasterView({ store }) {
                 <div className="flex justify-between items-center mb-2">
                   <div className="flex items-center gap-2">
                     <div
-                      className={`w-3 h-3 rounded-full ${rank ? 'bg-green-400 animate-pulse' : 'bg-gray-600'
+                      className={`w-3 h-3 rounded-full ${player.connected === false ? 'bg-red-500' : rank ? 'bg-green-400 animate-pulse' : 'bg-gray-600'
                         }`}
+                      title={player.connected === false ? t('status.disconnected') : rank ? t('status.buzzed') : t('status.connected')}
                     />
                     <span className="font-semibold truncate max-w-[140px]">
                       {player.name}
@@ -743,6 +764,7 @@ export default function QuizMasterView({ store }) {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => updateScore(player.id, -1)}
+                      title={t('tooltips.scoreDown')}
                       className="w-8 h-8 rounded-lg bg-gray-800 hover:bg-red-800 flex items-center justify-center transition-colors"
                     >
                       <Minus className="w-4 h-4" />
@@ -752,6 +774,7 @@ export default function QuizMasterView({ store }) {
                     </span>
                     <button
                       onClick={() => updateScore(player.id, 1)}
+                      title={t('tooltips.scoreUp')}
                       className="w-8 h-8 rounded-lg bg-gray-800 hover:bg-green-800 flex items-center justify-center transition-colors"
                     >
                       <Plus className="w-4 h-4" />
@@ -759,10 +782,41 @@ export default function QuizMasterView({ store }) {
                   </div>
                 </div>
 
+                {/* Per-player sound assignment */}
+                {perPlayerSound && (
+                  <div className="mt-2 flex items-center gap-1.5">
+                    <Music className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                    <select
+                      value={player.soundId || ''}
+                      onChange={(e) => setPlayerSound(player.id, Number(e.target.value))}
+                      className="flex-1 px-2 py-1 rounded-lg bg-gray-800 border border-gray-700 text-xs text-gray-300 focus:border-indigo-500 focus:outline-none"
+                    >
+                      <option value="" disabled>{t('quizmaster.assignSound')}</option>
+                      {SOUND_NAMES.map((name, idx) => {
+                        const soundId = idx + 1;
+                        const taken = assignedSoundIds.has(soundId) && player.soundId !== soundId;
+                        return (
+                          <option key={soundId} value={soundId} disabled={taken}>
+                            {name}{taken ? ` (${t('quizmaster.taken')})` : ''}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <button
+                      onClick={() => handleTestPlayerSound(player.soundId || 1)}
+                      className="w-7 h-7 rounded-lg bg-gray-800 hover:bg-gray-700 flex items-center justify-center text-gray-400 hover:text-white transition-colors shrink-0"
+                      title={t('tooltips.testSound')}
+                    >
+                      <Volume2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+
                 {/* Reset & Kick buttons */}
                 <div className="mt-2 flex gap-2">
                   <button
                     onClick={() => resetPlayer(player.id)}
+                    title={t('tooltips.resetPlayer')}
                     className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs font-medium text-gray-300 transition-colors"
                   >
                     <RotateCcw className="w-3 h-3" /> {t('common.reset')}
@@ -785,12 +839,38 @@ export default function QuizMasterView({ store }) {
                   ) : (
                     <button
                       onClick={() => setConfirmKick(player.id)}
+                      title={t('tooltips.kickPlayer')}
                       className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-red-900/50 hover:bg-red-800 text-xs font-medium text-red-300 transition-colors"
                     >
                       <UserX className="w-3 h-3" /> {t('quizmaster.kick')}
                     </button>
                   )}
                 </div>
+
+                {/* Takeover link for disconnected players */}
+                {player.connected === false && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const token = await generateTakeoverToken(player.id);
+                        const url = `${window.location.origin}/room/${roomId}?takeover=${token}`;
+                        await navigator.clipboard.writeText(url);
+                        setCopiedLink(`takeover-${player.id}`);
+                        setTimeout(() => setCopiedLink(null), 2000);
+                      } catch (err) {
+                        console.error('Failed to generate takeover link:', err);
+                      }
+                    }}
+                    className="mt-2 w-full flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-amber-900/50 hover:bg-amber-800 text-xs font-medium text-amber-300 transition-colors"
+                    title={t('tooltips.copyTakeoverLink')}
+                  >
+                    {copiedLink === `takeover-${player.id}` ? (
+                      <><Check className="w-3 h-3" /> {t('quizmaster.copied')}</>
+                    ) : (
+                      <><Link2 className="w-3 h-3" /> {t('quizmaster.copyTakeoverLink')}</>
+                    )}
+                  </button>
+                )}
               </div>
             );
           })}
@@ -833,6 +913,7 @@ export default function QuizMasterView({ store }) {
                 ) : (
                   <button
                     onClick={() => setConfirmKick(spec.id)}
+                    title={t('tooltips.kickSpectator')}
                     className="flex items-center gap-1 px-2 py-1 rounded bg-red-900/50 hover:bg-red-800 text-xs text-red-300 transition-colors"
                   >
                     <UserX className="w-3 h-3" /> {t('quizmaster.kick')}

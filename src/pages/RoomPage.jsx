@@ -54,6 +54,36 @@ export default function RoomPage() {
     }
 
     const session = loadSession();
+    // If the session has a sessionToken, the store's onConnect handles REJOIN_ROOM automatically.
+    // Just wait for store.roomId to appear (checked above). Don't do a fresh join.
+    if (session?.sessionToken) {
+      // The store will attempt REJOIN_ROOM on connect. If it fails, it falls back to JOIN_ROOM.
+      // We just wait — the interval will keep checking store.roomId via the effect deps.
+      const waitForRejoin = setInterval(() => {
+        if (store.roomId) {
+          setJoined(true);
+          clearInterval(waitForRejoin);
+        }
+      }, 200);
+      // Timeout: if rejoin doesn't succeed within 10s, clear session and show name prompt
+      const timeout = setTimeout(() => {
+        clearInterval(waitForRejoin);
+        if (!store.roomId) {
+          // Session-based rejoin failed; check URL params for direct link
+          const role = searchParams.get('role');
+          const token = searchParams.get('token');
+          if (role === 'player' || role === 'spectator') {
+            setLinkRole(role);
+            if (token) setSpectatorToken(token);
+            setNeedsName(true);
+          } else {
+            navigate('/');
+          }
+        }
+      }, 10000);
+      return () => { clearInterval(waitForRejoin); clearTimeout(timeout); };
+    }
+
     if (session?.name && session?.role) {
       const tryJoin = () => {
         if (store.connected && !joined) {
@@ -68,6 +98,25 @@ export default function RoomPage() {
     }
 
     // No session — check URL query param for direct link
+    const takeoverToken = searchParams.get('takeover');
+    if (takeoverToken) {
+      // Session takeover — wait for socket connection then attempt takeover
+      let attempted = false;
+      const doTakeover = () => {
+        if (store.connected && !joined && !attempted) {
+          attempted = true;
+          store.takeoverSession(id, takeoverToken).then(() => {
+            setJoined(true);
+          }).catch(() => {
+            navigate('/');
+          });
+        }
+      };
+      doTakeover();
+      const interval = setInterval(doTakeover, 200);
+      return () => clearInterval(interval);
+    }
+
     const role = searchParams.get('role');
     const token = searchParams.get('token');
     if (role === 'player' || role === 'spectator') {

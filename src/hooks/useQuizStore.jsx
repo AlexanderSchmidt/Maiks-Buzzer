@@ -7,6 +7,7 @@ const INITIAL_STATE = {
   playerId: null,
   role: null,
   spectatorToken: null,
+  sessionToken: null,
   kicked: false,
   gameState: {
     currentMode: 'BUZZER',
@@ -66,18 +67,61 @@ export function QuizProvider({ children }) {
       if (!reconnectedRef.current) {
         reconnectedRef.current = true;
         const session = loadSession();
-        if (session?.roomId && session?.name && session?.role) {
+        if (session?.roomId && session?.sessionToken) {
+          // Try session-based rejoin first (preserves playerId, scores, etc.)
+          socket.emit('REJOIN_ROOM', { roomId: session.roomId, sessionToken: session.sessionToken }, (res) => {
+            if (res.error) {
+              // Session expired or room gone — try a fresh join if we have name+role
+              if (session.name && session.role) {
+                socket.emit('JOIN_ROOM', { roomId: session.roomId, name: session.name, role: session.role, spectatorToken: session.spectatorToken || null }, (res2) => {
+                  if (res2.error) {
+                    clearSession();
+                    setState((s) => ({ ...s, error: res2.error }));
+                  } else {
+                    saveSession({ ...session, roomId: res2.roomId, sessionToken: res2.sessionToken, role: res2.role });
+                    setState((s) => ({
+                      ...s,
+                      roomId: res2.roomId,
+                      playerId: res2.playerId,
+                      role: res2.role,
+                      sessionToken: res2.sessionToken,
+                      spectatorToken: res2.spectatorToken || session.spectatorToken || null,
+                      error: null,
+                    }));
+                  }
+                });
+              } else {
+                clearSession();
+                setState((s) => ({ ...s, error: res.error }));
+              }
+            } else {
+              saveSession({ ...session, roomId: res.roomId, sessionToken: res.sessionToken });
+              setState((s) => ({
+                ...s,
+                roomId: res.roomId,
+                playerId: res.playerId,
+                role: res.role,
+                sessionToken: res.sessionToken,
+                spectatorToken: res.spectatorToken || session.spectatorToken || null,
+                error: null,
+              }));
+            }
+          });
+        } else if (session?.roomId && session?.name && session?.role) {
+          // No sessionToken stored (legacy) — do a fresh join
           const { roomId, name, role, spectatorToken } = session;
           socket.emit('JOIN_ROOM', { roomId, name, role, spectatorToken: spectatorToken || null }, (res) => {
             if (res.error) {
               clearSession();
               setState((s) => ({ ...s, error: res.error }));
             } else {
+              saveSession({ ...session, roomId: res.roomId, sessionToken: res.sessionToken, role: res.role });
               setState((s) => ({
                 ...s,
                 roomId: res.roomId,
                 playerId: res.playerId,
                 role: res.role,
+                sessionToken: res.sessionToken,
                 spectatorToken: res.spectatorToken || session.spectatorToken || null,
                 error: null,
               }));
@@ -134,13 +178,14 @@ export function QuizProvider({ children }) {
       if (res.error) {
         setState((s) => ({ ...s, error: res.error }));
       } else {
-        saveSession({ roomId: res.roomId, name, role: res.role, spectatorToken: res.spectatorToken || null });
+        saveSession({ roomId: res.roomId, name, role: res.role, spectatorToken: res.spectatorToken || null, sessionToken: res.sessionToken });
         setState((s) => ({
           ...s,
           roomId: res.roomId,
           playerId: res.playerId,
           role: res.role,
           spectatorToken: res.spectatorToken || null,
+          sessionToken: res.sessionToken,
           error: null,
         }));
       }
@@ -152,13 +197,14 @@ export function QuizProvider({ children }) {
       if (res.error) {
         setState((s) => ({ ...s, error: res.error }));
       } else {
-        saveSession({ roomId: res.roomId, name, role: res.role, spectatorToken: spectatorToken || null });
+        saveSession({ roomId: res.roomId, name, role: res.role, spectatorToken: spectatorToken || null, sessionToken: res.sessionToken });
         setState((s) => ({
           ...s,
           roomId: res.roomId,
           playerId: res.playerId,
           role: res.role,
           spectatorToken: res.spectatorToken || spectatorToken || null,
+          sessionToken: res.sessionToken,
           error: null,
         }));
       }
@@ -284,6 +330,42 @@ export function QuizProvider({ children }) {
     socket.emit('SET_SOUND', { soundId });
   }, []);
 
+  const setPlayerSound = useCallback((targetPlayerId, soundId) => {
+    socket.emit('SET_PLAYER_SOUND', { targetPlayerId, soundId });
+  }, []);
+
+  const generateTakeoverToken = useCallback((targetPlayerId) => {
+    return new Promise((resolve, reject) => {
+      socket.emit('GENERATE_TAKEOVER_TOKEN', { targetPlayerId }, (res) => {
+        if (res.error) reject(new Error(res.error));
+        else resolve(res.takeoverToken);
+      });
+    });
+  }, []);
+
+  const takeoverSession = useCallback((roomId, takeoverToken) => {
+    return new Promise((resolve, reject) => {
+      socket.emit('TAKEOVER_SESSION', { roomId, takeoverToken }, (res) => {
+        if (res.error) {
+          setState((s) => ({ ...s, error: res.error }));
+          reject(new Error(res.error));
+        } else {
+          saveSession({ roomId: res.roomId, name: '', role: res.role, spectatorToken: res.spectatorToken || null, sessionToken: res.sessionToken });
+          setState((s) => ({
+            ...s,
+            roomId: res.roomId,
+            playerId: res.playerId,
+            role: res.role,
+            sessionToken: res.sessionToken,
+            spectatorToken: res.spectatorToken || null,
+            error: null,
+          }));
+          resolve(res);
+        }
+      });
+    });
+  }, []);
+
   const clearKicked = useCallback(() => {
     setState((s) => ({ ...s, kicked: false }));
   }, []);
@@ -322,6 +404,9 @@ export function QuizProvider({ children }) {
     kickPlayer,
     resetPlayer,
     setSound,
+    setPlayerSound,
+    generateTakeoverToken,
+    takeoverSession,
     clearKicked,
     hasSession,
   };

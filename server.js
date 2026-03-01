@@ -32,6 +32,7 @@ function generateTeamName(existingNames = []) {
 
 // ─── In-Memory Room Store ────────────────────────────────────────────────────
 const rooms = new Map();
+const DISCONNECT_GRACE_MS = 60_000; // 60 seconds grace period for reconnection
 
 function createRoom() {
   const id = uuidv4().slice(0, 6).toUpperCase();
@@ -41,9 +42,9 @@ function createRoom() {
     spectatorToken,
     gameState: {
       currentMode: 'BUZZER', // BUZZER | MULTIPLE_CHOICE | GUESS
-      raceMode: false,      // false = "First wins" (lock after 1st), true = "Race" (all can buzz)
-      showBuzzToPlayers: true, // whether players can see who buzzed first
-      inputEnabled: false,
+      raceMode: true,      // false = "First wins" (lock after 1st), true = "Race" (all can buzz)
+      showBuzzToPlayers: false, // whether players can see who buzzed first
+      inputEnabled: true,
       buzzes: [],           // [{ playerId, playerName, timestamp }] ordered by time
       lockedOut: false,     // true after first buzz in "First wins" mode
 
@@ -60,15 +61,42 @@ function createRoom() {
       playerAnswers: {},
       clearGeneration: 0,
     },
-    players: new Map(),  // socketId → { id, name, role, text, score }
-    scores: {},          // playerId → score (persistent across resets)
-    teams: {},           // teamId → { name, color }
-    playerTeams: {},     // playerId → teamId
-    teamsEnabled: false, // whether team mode is active
-    history: [],         // [{ id, timestamp, playerId, playerName, action, detail }]
+    players: new Map(),           // socketId → { id, name, role, text, score, sessionToken, joinOrder }
+    disconnectedPlayers: new Map(), // sessionToken → { player, timer, oldSocketId }
+    takeoverTokens: new Map(),      // takeoverToken → sessionToken (one-time takeover links)
+    nextJoinOrder: 1,               // monotonic counter for stable player ordering
+    scores: {},                   // playerId → score (persistent across resets)
+    teams: {},                    // teamId → { name, color }
+    playerTeams: {},              // playerId → teamId
+    teamsEnabled: false,          // whether team mode is active
+    history: [],                  // [{ id, timestamp, playerId, playerName, action, detail }]
   };
   rooms.set(id, room);
   return room;
+}
+
+// Find a player across active and disconnected players by sessionToken
+function findPlayerBySession(room, sessionToken) {
+  for (const [socketId, p] of room.players) {
+    if (p.sessionToken === sessionToken) return { player: p, socketId, disconnected: false };
+  }
+  if (room.disconnectedPlayers.has(sessionToken)) {
+    const entry = room.disconnectedPlayers.get(sessionToken);
+    return { player: entry.player, socketId: null, disconnected: true, entry };
+  }
+  return null;
+}
+
+// Remove a truly-expired disconnected player from the room
+function removeDisconnectedPlayer(room, sessionToken) {
+  const entry = room.disconnectedPlayers.get(sessionToken);
+  if (!entry) return;
+  const playerId = entry.player.id;
+  room.disconnectedPlayers.delete(sessionToken);
+  // Don't remove scores — they persist for the room's lifetime
+  // But do clean up buzzes etc. if desired
+  console.log(`[session-expired] player ${entry.player.name} (${playerId}) removed from room ${room.id}`);
+  broadcast(room);
 }
 
 function getTeamScores(room) {
@@ -86,6 +114,7 @@ function getTeamScores(room) {
 
 function getRoomPayload(room) {
   const players = [];
+  // Active (connected) players
   for (const [socketId, p] of room.players) {
     players.push({
       socketId,
@@ -96,8 +125,28 @@ function getRoomPayload(room) {
       score: room.scores[p.id] ?? 0,
       soundId: p.soundId || 0,
       teamId: room.playerTeams[p.id] || null,
+      connected: true,
+      joinOrder: p.joinOrder || 0,
     });
   }
+  // Disconnected players (in grace period) — still visible but greyed out
+  for (const [sessionToken, entry] of room.disconnectedPlayers) {
+    const p = entry.player;
+    players.push({
+      socketId: null,
+      id: p.id,
+      name: p.name,
+      role: p.role,
+      text: p.text || '',
+      score: room.scores[p.id] ?? 0,
+      soundId: p.soundId || 0,
+      teamId: room.playerTeams[p.id] || null,
+      connected: false,
+      joinOrder: p.joinOrder || 0,
+    });
+  }
+  // Sort by join order to keep stable ordering across reconnections
+  players.sort((a, b) => a.joinOrder - b.joinOrder);
   return {
     roomId: room.id,
     gameState: room.gameState,
@@ -127,19 +176,22 @@ io.on('connection', (socket) => {
   socket.on('CREATE_ROOM', ({ name }, cb) => {
     const room = createRoom();
     const playerId = uuidv4().slice(0, 8);
+    const sessionToken = uuidv4();
     room.players.set(socket.id, {
       id: playerId,
       name: name || 'Quiz Master',
       role: 'quizmaster',
       text: '',
       soundId: 0,
+      sessionToken,
+      joinOrder: room.nextJoinOrder++,
     });
     room.scores[playerId] = 0;
     socket.join(room.id);
-    socket.data = { roomId: room.id, playerId };
+    socket.data = { roomId: room.id, playerId, sessionToken };
     addHistory(room, { playerId, playerName: name || 'Quiz Master', action: 'CREATE', detail: 'Created room' });
     broadcast(room);
-    if (cb) cb({ roomId: room.id, playerId, role: 'quizmaster', spectatorToken: room.spectatorToken });
+    if (cb) cb({ roomId: room.id, playerId, role: 'quizmaster', spectatorToken: room.spectatorToken, sessionToken });
   });
 
   // ── JOIN_ROOM ──────────────────────────────────────────────────────────
@@ -155,12 +207,15 @@ io.on('connection', (socket) => {
       return;
     }
     const playerId = uuidv4().slice(0, 8);
+    const sessionToken = uuidv4();
     room.players.set(socket.id, {
       id: playerId,
       name: name || `Player ${room.players.size}`,
       role,
       text: '',
       soundId: 0,
+      sessionToken,
+      joinOrder: room.nextJoinOrder++,
     });
     if (role === 'player') {
       room.scores[playerId] = 0;
@@ -184,10 +239,137 @@ io.on('connection', (socket) => {
       }
     }
     socket.join(room.id);
-    socket.data = { roomId: room.id, playerId };
+    socket.data = { roomId: room.id, playerId, sessionToken };
     addHistory(room, { playerId, playerName: name || 'Player', action: 'JOIN', detail: `Joined as ${role}` });
     broadcast(room);
-    if (cb) cb({ roomId: room.id, playerId, role, spectatorToken: role === 'quizmaster' ? room.spectatorToken : undefined });
+    if (cb) cb({ roomId: room.id, playerId, role, spectatorToken: role === 'quizmaster' ? room.spectatorToken : undefined, sessionToken });
+  });
+
+  // ── REJOIN_ROOM (session-based reconnection) ───────────────────────────
+  socket.on('REJOIN_ROOM', ({ roomId, sessionToken }, cb) => {
+    const room = rooms.get(roomId?.toUpperCase());
+    if (!room) {
+      if (cb) cb({ error: 'Room not found' });
+      return;
+    }
+    if (!sessionToken) {
+      if (cb) cb({ error: 'No session token' });
+      return;
+    }
+
+    const found = findPlayerBySession(room, sessionToken);
+    if (!found) {
+      if (cb) cb({ error: 'Session expired' });
+      return;
+    }
+
+    const { player, disconnected, entry } = found;
+
+    if (disconnected) {
+      // Clear the expiry timer
+      if (entry.timer) clearTimeout(entry.timer);
+      room.disconnectedPlayers.delete(sessionToken);
+      // Re-add to active players with the new socket
+      room.players.set(socket.id, player);
+    } else {
+      // Player is still in active map (very fast reconnect / duplicate tab)
+      // Remove old socket mapping, add new one
+      const oldSocketId = found.socketId;
+      if (oldSocketId && oldSocketId !== socket.id) {
+        room.players.delete(oldSocketId);
+        const oldSocket = io.sockets.sockets.get(oldSocketId);
+        if (oldSocket) {
+          oldSocket.leave(room.id);
+          oldSocket.data = {};
+        }
+      }
+      room.players.set(socket.id, player);
+    }
+
+    socket.join(room.id);
+    socket.data = { roomId: room.id, playerId: player.id, sessionToken };
+
+    console.log(`[rejoin] ${player.name} (${player.id}) rejoined room ${room.id}`);
+    broadcast(room);
+    if (cb) cb({
+      roomId: room.id,
+      playerId: player.id,
+      role: player.role,
+      sessionToken,
+      spectatorToken: player.role === 'quizmaster' ? room.spectatorToken : undefined,
+    });
+  });
+
+  // ── GENERATE_TAKEOVER_TOKEN (QM only — creates a one-time link for a disconnected player) ──
+  socket.on('GENERATE_TAKEOVER_TOKEN', ({ targetPlayerId }, cb) => {
+    const { roomId } = socket.data || {};
+    const room = rooms.get(roomId);
+    if (!room) { if (cb) cb({ error: 'Room not found' }); return; }
+    const player = room.players.get(socket.id);
+    if (!player || player.role !== 'quizmaster') { if (cb) cb({ error: 'Not allowed' }); return; }
+
+    // Find the disconnected player by playerId
+    let targetSessionToken = null;
+    for (const [st, entry] of room.disconnectedPlayers) {
+      if (entry.player.id === targetPlayerId) {
+        targetSessionToken = st;
+        break;
+      }
+    }
+    if (!targetSessionToken) { if (cb) cb({ error: 'Player not found or not disconnected' }); return; }
+
+    // Invalidate any existing takeover token for this session
+    for (const [tok, st] of room.takeoverTokens) {
+      if (st === targetSessionToken) { room.takeoverTokens.delete(tok); break; }
+    }
+
+    const takeoverToken = uuidv4();
+    room.takeoverTokens.set(takeoverToken, targetSessionToken);
+    console.log(`[takeover] token generated for ${targetPlayerId} in room ${room.id}`);
+    if (cb) cb({ takeoverToken });
+  });
+
+  // ── TAKEOVER_SESSION (anyone with a valid takeover token) ──────────────
+  socket.on('TAKEOVER_SESSION', ({ roomId, takeoverToken }, cb) => {
+    const room = rooms.get(roomId?.toUpperCase());
+    if (!room) { if (cb) cb({ error: 'Room not found' }); return; }
+    if (!takeoverToken || !room.takeoverTokens.has(takeoverToken)) {
+      if (cb) cb({ error: 'Invalid or expired takeover link' });
+      return;
+    }
+
+    const sessionToken = room.takeoverTokens.get(takeoverToken);
+    room.takeoverTokens.delete(takeoverToken); // one-time use
+
+    const entry = room.disconnectedPlayers.get(sessionToken);
+    if (!entry) {
+      if (cb) cb({ error: 'Player already reconnected or removed' });
+      return;
+    }
+
+    // Clear the expiry timer and restore the player
+    if (entry.timer) clearTimeout(entry.timer);
+    room.disconnectedPlayers.delete(sessionToken);
+
+    const takenOverPlayer = entry.player;
+    // Generate a NEW session token for the new owner
+    const newSessionToken = uuidv4();
+    takenOverPlayer.sessionToken = newSessionToken;
+
+    room.players.set(socket.id, takenOverPlayer);
+    socket.join(room.id);
+    socket.data = { roomId: room.id, playerId: takenOverPlayer.id, sessionToken: newSessionToken };
+
+    console.log(`[takeover] ${takenOverPlayer.name} (${takenOverPlayer.id}) taken over by socket ${socket.id} in room ${room.id}`);
+    addHistory(room, { playerId: takenOverPlayer.id, playerName: takenOverPlayer.name, action: 'TAKEOVER', detail: `Session taken over` });
+    broadcast(room);
+    if (cb) cb({
+      roomId: room.id,
+      playerId: takenOverPlayer.id,
+      role: takenOverPlayer.role,
+      sessionToken: newSessionToken,
+      spectatorToken: takenOverPlayer.role === 'quizmaster' ? room.spectatorToken : undefined,
+    });
   });
 
   // ── BUZZ_PRESS (Server-authoritative) ──────────────────────────────────
@@ -232,6 +414,32 @@ io.on('connection', (socket) => {
     if (!player) return;
     player.soundId = typeof soundId === 'number' ? Math.max(0, Math.min(9, soundId)) : 0;
     broadcast(room);
+  });
+
+  // ── SET_PLAYER_SOUND (QM assigns sound to a specific player) ──────────
+  socket.on('SET_PLAYER_SOUND', ({ targetPlayerId, soundId }) => {
+    const { roomId } = socket.data || {};
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const player = room.players.get(socket.id);
+    if (!player || player.role !== 'quizmaster') return;
+    const resolvedSoundId = typeof soundId === 'number' ? Math.max(1, Math.min(9, soundId)) : 1;
+    // Find target in active players
+    for (const [, p] of room.players) {
+      if (p.id === targetPlayerId) {
+        p.soundId = resolvedSoundId;
+        broadcast(room);
+        return;
+      }
+    }
+    // Also check disconnected players
+    for (const [, entry] of room.disconnectedPlayers) {
+      if (entry.player.id === targetPlayerId) {
+        entry.player.soundId = resolvedSoundId;
+        broadcast(room);
+        return;
+      }
+    }
   });
 
   // ── TEXT_UPDATE (throttled client-side, processed here) ─────────────────
@@ -597,29 +805,53 @@ io.on('connection', (socket) => {
     const player = room.players.get(socket.id);
     if (!player || player.role !== 'quizmaster') return;
 
-    // Find the target socket
+    // Find the target in active players
     let targetSocketId = null;
     let targetName = null;
+    let targetSessionToken = null;
     for (const [sid, p] of room.players) {
       if (p.id === targetPlayerId) {
         targetSocketId = sid;
         targetName = p.name;
+        targetSessionToken = p.sessionToken;
         break;
       }
     }
-    if (!targetSocketId) return;
+
+    // Also check disconnected players
+    if (!targetSocketId) {
+      for (const [st, entry] of room.disconnectedPlayers) {
+        if (entry.player.id === targetPlayerId) {
+          targetName = entry.player.name;
+          targetSessionToken = st;
+          // Clear grace timer and remove
+          if (entry.timer) clearTimeout(entry.timer);
+          room.disconnectedPlayers.delete(st);
+          break;
+        }
+      }
+      if (!targetName) return;
+    }
 
     addHistory(room, { playerId: player.id, playerName: player.name, action: 'KICK', detail: `Kicked ${targetName}` });
 
-    // Notify the kicked player before removing
-    io.to(targetSocketId).emit('KICKED');
-    // Remove from room
-    const targetSocket = io.sockets.sockets.get(targetSocketId);
-    if (targetSocket) {
-      targetSocket.leave(room.id);
-      targetSocket.data = {};
+    if (targetSocketId) {
+      // Notify the kicked player before removing
+      io.to(targetSocketId).emit('KICKED');
+      // Remove from room
+      const targetSocket = io.sockets.sockets.get(targetSocketId);
+      if (targetSocket) {
+        targetSocket.leave(room.id);
+        targetSocket.data = {};
+      }
+      room.players.delete(targetSocketId);
     }
-    room.players.delete(targetSocketId);
+    // Also remove from disconnected pool if present
+    if (targetSessionToken && room.disconnectedPlayers.has(targetSessionToken)) {
+      const entry = room.disconnectedPlayers.get(targetSessionToken);
+      if (entry.timer) clearTimeout(entry.timer);
+      room.disconnectedPlayers.delete(targetSessionToken);
+    }
     delete room.scores[targetPlayerId];
     delete room.playerTeams[targetPlayerId];
     broadcast(room);
@@ -665,11 +897,12 @@ io.on('connection', (socket) => {
     const player = room.players.get(socket.id);
     if (player) {
       addHistory(room, { playerId, playerName: player.name, action: 'LEAVE', detail: 'Left the room' });
+      // Intentional leave — don't add to disconnectedPlayers
     }
     socket.leave(roomId);
     room.players.delete(socket.id);
     socket.data = {};
-    if (room.players.size === 0) {
+    if (room.players.size === 0 && room.disconnectedPlayers.size === 0) {
       rooms.delete(room.id);
       console.log(`[room-deleted] ${room.id}`);
     } else {
@@ -677,19 +910,36 @@ io.on('connection', (socket) => {
     }
   });
 
-  // ── Disconnect ─────────────────────────────────────────────────────────
+  // ── Disconnect (grace period for reconnection) ────────────────────────
   socket.on('disconnect', () => {
     console.log(`[disconnect] ${socket.id}`);
-    const { roomId } = socket.data || {};
+    const { roomId, sessionToken } = socket.data || {};
     const room = rooms.get(roomId);
     if (!room) return;
-    room.players.delete(socket.id);
-    // Clean up empty rooms
-    if (room.players.size === 0) {
-      rooms.delete(room.id);
-      console.log(`[room-deleted] ${room.id}`);
-    } else {
+
+    const player = room.players.get(socket.id);
+    if (player && sessionToken) {
+      // Move player to disconnected pool with a grace timer
+      room.players.delete(socket.id);
+      const timer = setTimeout(() => {
+        removeDisconnectedPlayer(room, sessionToken);
+        // If room is now fully empty, delete it
+        if (room.players.size === 0 && room.disconnectedPlayers.size === 0) {
+          rooms.delete(room.id);
+          console.log(`[room-deleted] ${room.id}`);
+        }
+      }, DISCONNECT_GRACE_MS);
+      room.disconnectedPlayers.set(sessionToken, { player, timer });
+      console.log(`[grace-period] ${player.name} (${player.id}) has ${DISCONNECT_GRACE_MS / 1000}s to reconnect`);
       broadcast(room);
+    } else {
+      room.players.delete(socket.id);
+      if (room.players.size === 0 && room.disconnectedPlayers.size === 0) {
+        rooms.delete(room.id);
+        console.log(`[room-deleted] ${room.id}`);
+      } else {
+        broadcast(room);
+      }
     }
   });
 });

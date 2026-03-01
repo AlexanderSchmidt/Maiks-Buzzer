@@ -198,12 +198,15 @@ export default function SpectatorView({ store }) {
                         : 'bg-gray-800/50'
                     } ${
                       newBuzzIds.has(player.id) ? 'scale-[1.02]' : ''
-                    }`}
+                    }${player.connected === false ? ' opacity-50' : ''}`}
                   >
                     <div className="flex items-center gap-3">
                       <span className="w-6 text-center text-sm font-bold text-gray-500">
                         {idx + 1}
                       </span>
+                      {player.connected === false && (
+                        <div className="w-2 h-2 rounded-full bg-red-500 shrink-0" title={t('status.disconnected')} />
+                      )}
                       <span className="font-medium truncate max-w-[160px]">
                         {player.name}
                       </span>

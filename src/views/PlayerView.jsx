@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Zap, Send, Type, Check, CheckCircle, Clock, LogOut, Volume2, VolumeX, Music, UsersRound, Lock, Trophy, ChevronDown, ChevronRight } from 'lucide-react';
-import { SOUND_NAMES, loadSoundPrefs, saveSoundPrefs, resolveSoundId, playBuzzSound } from '../sounds';
+import { Zap, Send, Type, Check, CheckCircle, Clock, LogOut, Volume2, VolumeX, UsersRound, Lock, Trophy, ChevronDown, ChevronRight } from 'lucide-react';
+import { loadSoundPrefs, saveSoundPrefs, resolveSoundId, playBuzzSound } from '../sounds';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 
 export default function PlayerView({ store }) {
@@ -16,7 +16,6 @@ export default function PlayerView({ store }) {
     previewAnswer,
     submitAnswer,
     leaveRoom,
-    setSound,
     teams,
     playerTeams,
     teamsEnabled,
@@ -37,10 +36,6 @@ export default function PlayerView({ store }) {
   const prevBuzzCountRef = useRef(0);
 
   // Sound preferences (persisted in localStorage)
-  const [soundSelection, setSoundSelection] = useState(() => {
-    const prefs = loadSoundPrefs();
-    return prefs.playerSound ?? 0; // 0 = random
-  });
   const [muted, setMuted] = useState(() => loadSoundPrefs().muted ?? false);
   const [volume, setVolume] = useState(() => loadSoundPrefs().volume ?? 0.7);
 
@@ -144,25 +139,13 @@ export default function PlayerView({ store }) {
     submitAnswer(sliderValue);
   };
 
-  // Sync sound selection to server
-  useEffect(() => {
-    setSound(soundSelection);
-  }, [soundSelection, setSound]);
-
-  // Play sound when I buzz
+  // Play sound when I buzz (use server-assigned soundId from the buzz data)
   useEffect(() => {
     if (myBuzz && !muted && buzzed) {
-      const resolved = resolveSoundId(soundSelection, playerId);
+      const resolved = resolveSoundId(myBuzz.soundId || me?.soundId || 1, playerId);
       playBuzzSound(resolved, volume);
     }
   }, [buzzed]); // only fire when buzzed flips to true
-
-  const handleSoundChange = (val) => {
-    const id = Number(val);
-    setSoundSelection(id);
-    saveSoundPrefs({ ...loadSoundPrefs(), playerSound: id });
-    setSound(id);
-  };
 
   const handleMuteToggle = () => {
     const next = !muted;
@@ -174,13 +157,6 @@ export default function PlayerView({ store }) {
     const v = Number(val);
     setVolume(v);
     saveSoundPrefs({ ...loadSoundPrefs(), volume: v });
-  };
-
-  const handleTestSound = () => {
-    if (!muted) {
-      const resolved = resolveSoundId(soundSelection, playerId);
-      playBuzzSound(resolved, volume);
-    }
   };
 
   const myScore = me?.score ?? 0;
@@ -382,22 +358,6 @@ export default function PlayerView({ store }) {
       <div className="fixed top-0 left-0 right-0 z-50 bg-gray-950/90 backdrop-blur-sm border-b border-gray-800/50 px-3 py-2 flex flex-wrap items-center gap-2 sm:gap-3 justify-between">
         {/* Sound controls */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink min-w-0">
-          <select
-            value={soundSelection}
-            onChange={(e) => handleSoundChange(e.target.value)}
-            className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-gray-300 focus:outline-none focus:border-indigo-500 min-w-0 max-w-[110px] sm:max-w-none"
-          >
-            {SOUND_NAMES.map((name, idx) => (
-              <option key={idx} value={idx}>{name}</option>
-            ))}
-          </select>
-          <button
-            onClick={handleTestSound}
-            className="w-8 h-8 rounded-lg bg-gray-800 hover:bg-gray-700 flex items-center justify-center text-gray-400 hover:text-white transition-colors shrink-0"
-            title={t('player.testSound')}
-          >
-            <Music className="w-3.5 h-3.5" />
-          </button>
           <button
             onClick={handleMuteToggle}
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0 ${
@@ -528,10 +488,10 @@ export default function PlayerView({ store }) {
                         {teamPlayers.map((p) => (
                           <div key={p.id} className={`flex items-center gap-2 text-sm rounded-lg px-3 py-1.5 ${
                             p.id === playerId ? 'bg-indigo-900/30' : 'bg-gray-900/40'
-                          }`}>
+                          }${p.connected === false ? ' opacity-50' : ''}`}>
                             <div className={`w-2 h-2 rounded-full shrink-0 ${
-                              gameState.buzzes.find((b) => b.playerId === p.id) ? 'bg-green-400' : 'bg-gray-600'
-                            }`} />
+                              p.connected === false ? 'bg-red-500' : gameState.buzzes.find((b) => b.playerId === p.id) ? 'bg-green-400' : 'bg-gray-600'
+                            }`} title={p.connected === false ? t('status.disconnected') : gameState.buzzes.find((b) => b.playerId === p.id) ? t('status.buzzed') : t('status.idle')} />
                             <span className={`font-medium truncate max-w-[120px] ${
                               p.id === playerId ? 'text-indigo-300' : 'text-gray-300'
                             }`}>{p.name}{p.id === playerId ? ` (${t('common.you')})` : ''}</span>
@@ -555,10 +515,10 @@ export default function PlayerView({ store }) {
                       {unassigned.map((p) => (
                         <div key={p.id} className={`flex items-center gap-2 text-sm rounded-lg px-3 py-1.5 ${
                           p.id === playerId ? 'bg-indigo-900/30' : 'bg-gray-900/40'
-                        }`}>
+                        }${p.connected === false ? ' opacity-50' : ''}`}>
                           <div className={`w-2 h-2 rounded-full shrink-0 ${
-                            gameState.buzzes.find((b) => b.playerId === p.id) ? 'bg-green-400' : 'bg-gray-600'
-                          }`} />
+                            p.connected === false ? 'bg-red-500' : gameState.buzzes.find((b) => b.playerId === p.id) ? 'bg-green-400' : 'bg-gray-600'
+                          }`} title={p.connected === false ? t('status.disconnected') : gameState.buzzes.find((b) => b.playerId === p.id) ? t('status.buzzed') : t('status.idle')} />
                           <span className={`font-medium truncate max-w-[120px] ${
                             p.id === playerId ? 'text-indigo-300' : 'text-gray-300'
                           }`}>{p.name}{p.id === playerId ? ` (${t('common.you')})` : ''}</span>
