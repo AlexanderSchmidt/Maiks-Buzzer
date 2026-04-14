@@ -29,6 +29,7 @@ export default function PlayerView({ store }) {
   const [buzzRank, setBuzzRank] = useState(null);
   const [selectedMcIndex, setSelectedMcIndex] = useState(null);
   const [sliderValue, setSliderValue] = useState(null);
+  const [dateValue, setDateValue] = useState('');
 
   const [showHistory, setShowHistory] = useState(false);
   const [showScores, setShowScores] = useState(false);
@@ -48,6 +49,34 @@ export default function PlayerView({ store }) {
     ([pid, ans]) => pid !== playerId && ans?.submitted
   );
 
+  // Death timer: countdown & blocking
+  const [timerRemaining, setTimerRemaining] = useState(null);
+  useEffect(() => {
+    if (!gameState.timerStartedAt || gameState.timerExpired) {
+      setTimerRemaining(gameState.timerExpired ? 0 : null);
+      return;
+    }
+    const tick = () => {
+      const elapsed = (Date.now() - gameState.timerStartedAt) / 1000;
+      const rem = Math.max(0, gameState.timerDuration - elapsed);
+      setTimerRemaining(Math.ceil(rem));
+    };
+    tick();
+    const iv = setInterval(tick, 250);
+    return () => clearInterval(iv);
+  }, [gameState.timerStartedAt, gameState.timerDuration, gameState.timerExpired]);
+
+  const isTimerBlocking = (() => {
+    const gs = gameState;
+    if (gs.timerMode === 'off') return false;
+    if (gs.timerMode === 'enforced') return !gs.timerStartedAt || gs.timerExpired;
+    if (gs.timerMode === 'enforced_after_first') {
+      if (!gs.timerStartedAt) return false;
+      return gs.timerExpired;
+    }
+    return false;
+  })();
+
   useEffect(() => {
     if (myBuzz) {
       setBuzzed(true);
@@ -62,6 +91,7 @@ export default function PlayerView({ store }) {
   useEffect(() => {
     setSelectedMcIndex(null);
     setSliderValue(null);
+    setDateValue('');
   }, [gameState.currentMode, gameState.mcOptionsLocked, gameState.sliderLocked]);
 
   // Reset all local inputs when QM clears
@@ -69,6 +99,7 @@ export default function PlayerView({ store }) {
     setLocalText('');
     setSelectedMcIndex(null);
     setSliderValue(null);
+    setDateValue('');
   }, [gameState.clearGeneration]);
 
   // Reset local inputs when QM uses resetPlayer (server clears text & answer)
@@ -78,6 +109,7 @@ export default function PlayerView({ store }) {
       setLocalText('');
       setSelectedMcIndex(null);
       setSliderValue(null);
+      setDateValue('');
     }
   }, [me?.text, myAnswer]);
 
@@ -137,6 +169,17 @@ export default function PlayerView({ store }) {
   const handleSliderSubmit = () => {
     if (sliderValue === null || isSubmitted) return;
     submitAnswer(sliderValue);
+  };
+
+  const handleDateChange = (val) => {
+    if (isSubmitted) return;
+    setDateValue(val);
+    sendPreview(val);
+  };
+
+  const handleDateSubmit = () => {
+    if (!dateValue || isSubmitted) return;
+    submitAnswer(dateValue);
   };
 
   // Play sound when I buzz (use server-assigned soundId from the buzz data)
@@ -212,6 +255,7 @@ export default function PlayerView({ store }) {
               onClick={handleBuzz}
               disabled={
                 buzzed ||
+                isTimerBlocking ||
                 (!gameState.raceMode && gameState.lockedOut)
               }
               className={`
@@ -221,6 +265,8 @@ export default function PlayerView({ store }) {
                 ${
                   buzzed
                     ? 'bg-green-500 ring-4 ring-green-300 cursor-default'
+                    : isTimerBlocking
+                    ? 'bg-gray-600 cursor-not-allowed opacity-60'
                     : (!gameState.raceMode && gameState.lockedOut)
                     ? 'bg-gray-600 cursor-not-allowed opacity-60'
                     : 'bg-red-600 hover:bg-red-500 active:bg-red-700 ring-4 ring-red-400 hover:ring-red-300 cursor-pointer animate-pulse'
@@ -230,6 +276,8 @@ export default function PlayerView({ store }) {
               <Zap className="w-16 h-16 mx-auto mb-2" />
               {buzzed
                 ? (gameState.showBuzzToPlayers !== false ? `#${buzzRank}!` : t('player.buzzed'))
+                : isTimerBlocking
+                ? (gameState.timerExpired ? t('player.timesUp') : t('player.waitingForTimer'))
                 : (!gameState.raceMode && gameState.lockedOut)
                 ? t('player.locked')
                 : t('player.buzzButton')}
@@ -255,9 +303,9 @@ export default function PlayerView({ store }) {
                 <button
                   key={idx}
                   onClick={() => handleMcSelect(idx)}
-                  disabled={isSubmitted || soloLocked}
+                  disabled={isSubmitted || soloLocked || isTimerBlocking}
                   className={`w-full py-4 px-4 text-lg font-bold rounded-xl transition-colors border text-left ${
-                    soloLocked
+                    soloLocked || isTimerBlocking
                       ? 'bg-gray-900 border-gray-800 text-gray-600 cursor-not-allowed opacity-60'
                       : selectedMcIndex === idx
                       ? isSubmitted
@@ -279,7 +327,7 @@ export default function PlayerView({ store }) {
             ) : !isSubmitted ? (
               <button
                 onClick={handleMcSubmit}
-                disabled={selectedMcIndex === null}
+                disabled={selectedMcIndex === null || isTimerBlocking}
                 className="w-full py-3 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-40 disabled:cursor-not-allowed font-bold transition-colors flex items-center justify-center gap-2"
               >
                 <Send className="w-5 h-5" /> {t('player.submitAnswer')}
@@ -301,6 +349,64 @@ export default function PlayerView({ store }) {
             </div>
           );
         }
+
+        // Winner banner
+        const winnerBanner = gameState.guessWinnerId ? (
+          <div className={`w-full rounded-xl p-3 text-center font-bold text-sm ${
+            gameState.guessWinnerId === playerId
+              ? 'bg-yellow-900/50 border border-yellow-500/50 text-yellow-300'
+              : 'bg-gray-800/50 border border-gray-700 text-gray-300'
+          }`}>
+            <Trophy className="w-4 h-4 inline mr-1" />
+            {gameState.guessWinnerId === playerId
+              ? t('player.youWon')
+              : t('player.playerWasClosest', {
+                  name: players.find(p => p.id === gameState.guessWinnerId)?.name || '?',
+                })}
+          </div>
+        ) : null;
+
+        // Date mode
+        if (gameState.guessType === 'date') {
+          return (
+            <div className="flex flex-col items-center gap-6 w-full max-w-md">
+              <h2 className="text-xl font-bold text-blue-400">{t('player.guess')}</h2>
+              <div className="w-full flex justify-between text-xs text-gray-500">
+                <span>{new Date(gameState.sliderMin + 'T00:00:00').toLocaleDateString()}</span>
+                <span>{new Date(gameState.sliderMax + 'T00:00:00').toLocaleDateString()}</span>
+              </div>
+              <input
+                type="date"
+                min={gameState.sliderMin}
+                max={gameState.sliderMax}
+                value={dateValue}
+                onChange={(e) => handleDateChange(e.target.value)}
+                disabled={isSubmitted}
+                className="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none text-white text-center text-lg font-mono disabled:opacity-50"
+              />
+              {soloLocked ? (
+                <div className="flex items-center gap-2 text-red-400 text-sm font-semibold">
+                  <Lock className="w-5 h-5" /> {t('player.anotherPlayerSubmitted')}
+                </div>
+              ) : !isSubmitted ? (
+                <button
+                  onClick={handleDateSubmit}
+                  disabled={!dateValue || isTimerBlocking}
+                  className="px-8 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed font-bold transition-colors flex items-center gap-2"
+                >
+                  <Send className="w-5 h-5" /> {t('common.submit')}
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 text-green-400 text-sm font-semibold">
+                  <CheckCircle className="w-5 h-5" /> {t('player.answerSubmitted')}
+                </div>
+              )}
+              {winnerBanner}
+            </div>
+          );
+        }
+
+        // Number mode
         return (
           <div className="flex flex-col items-center gap-6 w-full max-w-md">
             <h2 className="text-xl font-bold text-blue-400">{t('player.guess')}</h2>
@@ -331,10 +437,14 @@ export default function PlayerView({ store }) {
               placeholder={t('player.typeANumber')}
               className="w-32 px-3 py-2 rounded-xl bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none text-white text-center text-xl font-mono disabled:opacity-50"
             />
-            {!isSubmitted ? (
+            {soloLocked ? (
+              <div className="flex items-center gap-2 text-red-400 text-sm font-semibold">
+                <Lock className="w-5 h-5" /> {t('player.anotherPlayerSubmitted')}
+              </div>
+            ) : !isSubmitted ? (
               <button
                 onClick={handleSliderSubmit}
-                disabled={sliderValue === null}
+                disabled={sliderValue === null || isTimerBlocking}
                 className="px-8 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed font-bold transition-colors flex items-center gap-2"
               >
                 <Send className="w-5 h-5" /> {t('common.submit')}
@@ -344,6 +454,7 @@ export default function PlayerView({ store }) {
                 <CheckCircle className="w-5 h-5" /> {t('player.answerSubmitted')}
               </div>
             )}
+            {winnerBanner}
           </div>
         );
 
@@ -413,6 +524,30 @@ export default function PlayerView({ store }) {
         {' · '}
         {gameState.raceMode ? t('player.race') : t('player.solo')}
       </div>
+
+      {/* Death Timer display */}
+      {gameState.timerMode !== 'off' && gameState.timerMode !== 'not_enforced' && (
+        <div className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold ${
+          gameState.timerExpired
+            ? 'bg-red-900/60 text-red-300 animate-pulse'
+            : timerRemaining !== null && timerRemaining <= 5
+            ? 'bg-red-900/40 text-red-400'
+            : timerRemaining !== null && timerRemaining <= 10
+            ? 'bg-yellow-900/40 text-yellow-400'
+            : timerRemaining !== null
+            ? 'bg-green-900/40 text-green-400'
+            : 'bg-gray-800 text-gray-400'
+        }`}>
+          <Clock className="w-4 h-4" />
+          {gameState.timerExpired
+            ? t('player.timesUp')
+            : timerRemaining !== null
+            ? t('player.timeRemaining', { seconds: timerRemaining })
+            : gameState.timerMode === 'enforced'
+            ? t('player.waitingForTimer')
+            : t('player.timerReady')}
+        </div>
+      )}
 
       {renderModeUI()}
 

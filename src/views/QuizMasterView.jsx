@@ -59,6 +59,13 @@ export default function QuizMasterView({ store }) {
     lockMcOptions,
     setSliderRange,
     lockSliderRange,
+    setGuessType,
+    setGuessSolution,
+    revealGuessWinner,
+    setTimerMode,
+    setTimerDuration,
+    startTimer,
+    stopTimer,
     leaveRoom,
     kickPlayer,
     resetPlayer,
@@ -74,6 +81,9 @@ export default function QuizMasterView({ store }) {
   const [localMcOptions, setLocalMcOptions] = useState(['', '']);
   const [localSliderMin, setLocalSliderMin] = useState(0);
   const [localSliderMax, setLocalSliderMax] = useState(100);
+  const [localDateMin, setLocalDateMin] = useState('');
+  const [localDateMax, setLocalDateMax] = useState('');
+  const [localSolution, setLocalSolution] = useState('');
   const [copiedLink, setCopiedLink] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
   const [showSpectators, setShowSpectators] = useState(false);
@@ -83,6 +93,8 @@ export default function QuizMasterView({ store }) {
   const [editingTeam, setEditingTeam] = useState(null); // teamId being renamed
   const [editTeamName, setEditTeamName] = useState('');
   const [resetFlash, setResetFlash] = useState(false);
+  const [localTimerDuration, setLocalTimerDuration] = useState(30);
+  const [timerRemaining, setTimerRemaining] = useState(null);
 
   const handleReset = () => {
     resetRoom();
@@ -125,6 +137,27 @@ export default function QuizMasterView({ store }) {
       prevBuzzIdsRef.current = new Set();
     }
   }, [gameState.buzzes.length]);
+
+  // Sync local timer duration from server state
+  useEffect(() => {
+    if (gameState.timerDuration) setLocalTimerDuration(gameState.timerDuration);
+  }, [gameState.timerDuration]);
+
+  // Countdown timer
+  useEffect(() => {
+    if (!gameState.timerStartedAt || gameState.timerExpired) {
+      setTimerRemaining(gameState.timerExpired ? 0 : null);
+      return;
+    }
+    const tick = () => {
+      const elapsed = (Date.now() - gameState.timerStartedAt) / 1000;
+      const rem = Math.max(0, gameState.timerDuration - elapsed);
+      setTimerRemaining(Math.ceil(rem));
+    };
+    tick();
+    const iv = setInterval(tick, 250);
+    return () => clearInterval(iv);
+  }, [gameState.timerStartedAt, gameState.timerDuration, gameState.timerExpired]);
 
   const handleMuteToggle = () => {
     const next = !muted;
@@ -193,7 +226,14 @@ export default function QuizMasterView({ store }) {
       }
       return String(val);
     }
-    if (mode === 'GUESS') return String(val);
+    if (mode === 'GUESS') {
+      if (gameState.guessType === 'date' && typeof val === 'string') {
+        try {
+          return new Date(val + 'T00:00:00').toLocaleDateString();
+        } catch { return val; }
+      }
+      return String(val);
+    }
     return String(val);
   };
 
@@ -223,8 +263,23 @@ export default function QuizMasterView({ store }) {
   };
 
   const handleConfirmSlider = () => {
-    setSliderRange(localSliderMin, localSliderMax);
+    const isDate = gameState.guessType === 'date';
+    if (isDate) {
+      setSliderRange(localDateMin, localDateMax);
+    } else {
+      setSliderRange(localSliderMin, localSliderMax);
+    }
     setTimeout(() => lockSliderRange(), 50);
+  };
+
+  const handleSetSolution = () => {
+    if (localSolution === '') return;
+    const isDate = gameState.guessType === 'date';
+    setGuessSolution(isDate ? localSolution : Number(localSolution));
+  };
+
+  const handleRevealWinner = () => {
+    revealGuessWinner();
   };
 
   // ── Mode-specific config panel ─────────────────────────────────────────
@@ -303,45 +358,174 @@ export default function QuizMasterView({ store }) {
             <h3 className="text-sm font-semibold text-blue-400 uppercase tracking-wider">
               {t('quizmaster.guessRange')}
             </h3>
+
+            {/* Guess type toggle */}
+            {!gameState.sliderLocked && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setGuessType('number')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    gameState.guessType !== 'date'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                  }`}
+                >
+                  {t('quizmaster.guessTypeNumber')}
+                </button>
+                <button
+                  onClick={() => setGuessType('date')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    gameState.guessType === 'date'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                  }`}
+                >
+                  {t('quizmaster.guessTypeDate')}
+                </button>
+              </div>
+            )}
+
             {gameState.sliderLocked ? (
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-green-400 text-sm">
                   <Lock className="w-4 h-4" /> {t('quizmaster.rangeLocked')}
                 </div>
                 <p className="text-sm text-gray-300">
-                  {t('quizmaster.range')}: <span className="font-mono text-blue-400">{gameState.sliderMin}</span>
+                  {t('quizmaster.range')}: <span className="font-mono text-blue-400">
+                    {gameState.guessType === 'date'
+                      ? new Date(gameState.sliderMin + 'T00:00:00').toLocaleDateString()
+                      : gameState.sliderMin}
+                  </span>
                   {' → '}
-                  <span className="font-mono text-blue-400">{gameState.sliderMax}</span>
+                  <span className="font-mono text-blue-400">
+                    {gameState.guessType === 'date'
+                      ? new Date(gameState.sliderMax + 'T00:00:00').toLocaleDateString()
+                      : gameState.sliderMax}
+                  </span>
+                  <span className="ml-2 text-xs text-gray-500">({gameState.guessType === 'date' ? t('quizmaster.guessTypeDate') : t('quizmaster.guessTypeNumber')})</span>
                 </p>
               </div>
             ) : (
               <div className="flex flex-wrap items-end gap-3">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">{t('quizmaster.min')}</label>
-                  <input
-                    type="number"
-                    value={localSliderMin}
-                    onChange={(e) => setLocalSliderMin(Number(e.target.value))}
-                    className="w-24 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none text-white text-sm"
-                  />
+                {gameState.guessType === 'date' ? (
+                  <>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">{t('quizmaster.min')}</label>
+                      <input
+                        type="date"
+                        value={localDateMin}
+                        onChange={(e) => setLocalDateMin(e.target.value)}
+                        className="w-40 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none text-white text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">{t('quizmaster.max')}</label>
+                      <input
+                        type="date"
+                        value={localDateMax}
+                        onChange={(e) => setLocalDateMax(e.target.value)}
+                        className="w-40 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none text-white text-sm"
+                      />
+                    </div>
+                    <button
+                      onClick={handleConfirmSlider}
+                      disabled={!localDateMin || !localDateMax || localDateMin >= localDateMax}
+                      title={t('tooltips.confirmSlider')}
+                      className="flex items-center gap-1 px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium transition-colors"
+                    >
+                      <Lock className="w-3 h-3" /> {t('quizmaster.confirmAndShow')}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">{t('quizmaster.min')}</label>
+                      <input
+                        type="number"
+                        value={localSliderMin}
+                        onChange={(e) => setLocalSliderMin(Number(e.target.value))}
+                        className="w-24 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none text-white text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">{t('quizmaster.max')}</label>
+                      <input
+                        type="number"
+                        value={localSliderMax}
+                        onChange={(e) => setLocalSliderMax(Number(e.target.value))}
+                        className="w-24 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none text-white text-sm"
+                      />
+                    </div>
+                    <button
+                      onClick={handleConfirmSlider}
+                      disabled={localSliderMin >= localSliderMax}
+                      title={t('tooltips.confirmSlider')}
+                      className="flex items-center gap-1 px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium transition-colors"
+                    >
+                      <Lock className="w-3 h-3" /> {t('quizmaster.confirmAndShow')}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Solution input — always available */}
+            <div className="mt-3 pt-3 border-t border-gray-700 space-y-2">
+              <label className="block text-xs text-gray-400 font-semibold uppercase tracking-wider">
+                {t('quizmaster.solution')}
+              </label>
+              {gameState.guessSolution !== null && gameState.guessSolution !== undefined ? (
+                <div className="flex items-center gap-2">
+                  <p className="text-sm text-green-400 font-mono">
+                    {gameState.guessType === 'date'
+                      ? new Date(gameState.guessSolution + 'T00:00:00').toLocaleDateString()
+                      : gameState.guessSolution}
+                  </p>
+                  <button
+                    onClick={() => { setGuessSolution(null); setLocalSolution(''); }}
+                    className="text-xs text-gray-500 hover:text-gray-300 underline"
+                  >
+                    {t('common.reset')}
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">{t('quizmaster.max')}</label>
+              ) : (
+                <div className="flex items-end gap-2">
                   <input
-                    type="number"
-                    value={localSliderMax}
-                    onChange={(e) => setLocalSliderMax(Number(e.target.value))}
-                    className="w-24 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 focus:border-blue-500 focus:outline-none text-white text-sm"
+                    type={gameState.guessType === 'date' ? 'date' : 'number'}
+                    value={localSolution}
+                    onChange={(e) => setLocalSolution(e.target.value)}
+                    className="w-40 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 focus:border-green-500 focus:outline-none text-white text-sm"
                   />
+                  <button
+                    onClick={handleSetSolution}
+                    disabled={localSolution === ''}
+                    className="flex items-center gap-1 px-4 py-2 rounded-lg bg-green-700 hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium transition-colors"
+                  >
+                    {t('quizmaster.setSolution')}
+                  </button>
                 </div>
-                <button
-                  onClick={handleConfirmSlider}
-                  disabled={localSliderMin >= localSliderMax}
-                  title={t('tooltips.confirmSlider')}
-                  className="flex items-center gap-1 px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium transition-colors"
-                >
-                  <Lock className="w-3 h-3" /> {t('quizmaster.confirmAndShow')}
-                </button>
+              )}
+            </div>
+
+            {/* Reveal closest button */}
+            {gameState.guessSolution !== null && gameState.guessSolution !== undefined && (
+              <div className="mt-2">
+                {gameState.guessWinnerId ? (
+                  <div className="flex items-center gap-2 text-yellow-400 text-sm font-semibold">
+                    <Trophy className="w-4 h-4" />
+                    {t('quizmaster.winnerIs', {
+                      name: playerList.find(p => p.id === gameState.guessWinnerId)?.name || '?',
+                    })}
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleRevealWinner}
+                    disabled={!Object.values(gameState.playerAnswers || {}).some(a => a.submitted)}
+                    className="flex items-center gap-1 px-4 py-2 rounded-lg bg-yellow-700 hover:bg-yellow-600 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-medium transition-colors"
+                  >
+                    <Trophy className="w-3 h-3" /> {t('quizmaster.revealClosest')}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -518,6 +702,71 @@ export default function QuizMasterView({ store }) {
           </button>
         </div>
 
+        {/* Death Timer controls */}
+        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-800">
+          <span className="text-xs uppercase tracking-wider text-gray-500 font-semibold"><Clock className="w-3 h-3 inline mr-1" />{t('quizmaster.deathTimer')}</span>
+          {['off', 'not_enforced', 'enforced', 'enforced_after_first'].map((m) => (
+            <button
+              key={m}
+              onClick={() => setTimerMode(m)}
+              title={t(`tooltips.timer_${m}`)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                gameState.timerMode === m
+                  ? m === 'off' ? 'bg-gray-600 text-white' : 'bg-amber-700 text-white'
+                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+              }`}
+            >
+              {t(`quizmaster.timer_${m}`)}
+            </button>
+          ))}
+          {gameState.timerMode !== 'off' && (
+            <>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={5}
+                  max={300}
+                  value={localTimerDuration}
+                  onChange={(e) => setLocalTimerDuration(Number(e.target.value) || 5)}
+                  onBlur={() => setTimerDuration(localTimerDuration)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') setTimerDuration(localTimerDuration); }}
+                  className="w-16 px-2 py-1.5 rounded-lg bg-gray-800 border border-gray-700 text-white text-xs text-center focus:outline-none focus:border-amber-500"
+                />
+                <span className="text-xs text-gray-500">s</span>
+              </div>
+              {!gameState.timerStartedAt || gameState.timerExpired ? (
+                <button
+                  onClick={startTimer}
+                  title={t('tooltips.startTimer')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-700 hover:bg-green-600 text-xs font-medium transition-colors"
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  {t('quizmaster.startTimer')}
+                </button>
+              ) : (
+                <button
+                  onClick={stopTimer}
+                  title={t('tooltips.stopTimer')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-xs font-medium transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  {t('quizmaster.stopTimer')}
+                </button>
+              )}
+              {timerRemaining !== null && (
+                <span className={`text-lg font-mono font-bold ${
+                  gameState.timerExpired ? 'text-red-400 animate-pulse' :
+                  timerRemaining <= 5 ? 'text-red-400' :
+                  timerRemaining <= 10 ? 'text-yellow-400' :
+                  'text-green-400'
+                }`}>
+                  {gameState.timerExpired ? t('quizmaster.timesUp') : `${timerRemaining}s`}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+
         {/* Sound controls */}
         <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-gray-800">
           <button
@@ -683,7 +932,9 @@ export default function QuizMasterView({ store }) {
             return (
               <div
                 key={player.id}
-                className={`rounded-2xl p-4 border transition-all duration-300 ${player.connected === false ? 'opacity-50 ' : ''}${rank === 1
+                className={`rounded-2xl p-4 border transition-all duration-300 ${player.connected === false ? 'opacity-50 ' : ''}${gameState.guessWinnerId === player.id
+                  ? 'bg-yellow-900/40 border-yellow-400/60 shadow-lg shadow-yellow-500/20 ring-2 ring-yellow-400/30'
+                  : rank === 1
                   ? 'bg-yellow-900/30 border-yellow-500/50 shadow-lg shadow-yellow-500/10'
                   : rank
                     ? 'bg-green-900/20 border-green-700/40'
@@ -748,6 +999,9 @@ export default function QuizMasterView({ store }) {
                       {answer?.submitted ? t('quizmaster.submitted') : t('quizmaster.previewing')}
                     </span>
                     {answerText}
+                    {gameState.guessWinnerId === player.id && (
+                      <span className="ml-2 text-yellow-400"><Trophy className="w-3 h-3 inline" /> {t('quizmaster.winner')}</span>
+                    )}
                   </div>
                 )}
 

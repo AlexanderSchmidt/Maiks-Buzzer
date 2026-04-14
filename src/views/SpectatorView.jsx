@@ -99,6 +99,23 @@ export default function SpectatorView({ store }) {
     }
   }, [gameState.inputEnabled]);
 
+  // ── Death Timer countdown ──────────────────────────────────────────────
+  const [timerRemaining, setTimerRemaining] = useState(null);
+  useEffect(() => {
+    if (!gameState.timerStartedAt || gameState.timerExpired) {
+      setTimerRemaining(gameState.timerExpired ? 0 : null);
+      return;
+    }
+    const tick = () => {
+      const elapsed = (Date.now() - gameState.timerStartedAt) / 1000;
+      const rem = Math.max(0, gameState.timerDuration - elapsed);
+      setTimerRemaining(Math.ceil(rem));
+    };
+    tick();
+    const iv = setInterval(tick, 250);
+    return () => clearInterval(iv);
+  }, [gameState.timerStartedAt, gameState.timerDuration, gameState.timerExpired]);
+
   const getBuzzRank = (playerId) => {
     const idx = gameState.buzzes.findIndex((b) => b.playerId === playerId);
     return idx >= 0 ? idx + 1 : null;
@@ -136,6 +153,11 @@ export default function SpectatorView({ store }) {
       return { label, submitted };
     }
     if (gameState.currentMode === 'GUESS') {
+      if (gameState.guessType === 'date' && typeof val === 'string') {
+        try {
+          return { label: new Date(val + 'T00:00:00').toLocaleDateString(), submitted };
+        } catch { return { label: val, submitted }; }
+      }
       return { label: `${val}`, submitted };
     }
     return { label: String(val), submitted };
@@ -160,6 +182,25 @@ export default function SpectatorView({ store }) {
               <span className={`inline-block transition-all duration-500 ${inputFlash ? (gameState.inputEnabled ? 'text-green-400 font-bold' : 'text-red-400 font-bold') : ''}`}>
                 {t('spectator.input')}: {gameState.inputEnabled ? t('spectator.inputOn') : t('spectator.inputOff')}
               </span>
+              {gameState.timerMode !== 'off' && gameState.timerMode !== 'not_enforced' && (
+                <>
+                  {' · '}
+                  <span className={`inline-block font-bold ${
+                    gameState.timerExpired ? 'text-red-400 animate-pulse' :
+                    timerRemaining !== null && timerRemaining <= 5 ? 'text-red-400' :
+                    timerRemaining !== null && timerRemaining <= 10 ? 'text-yellow-400' :
+                    timerRemaining !== null ? 'text-green-400' :
+                    'text-gray-400'
+                  }`}>
+                    <Clock className="w-3 h-3 inline mr-0.5" />
+                    {gameState.timerExpired
+                      ? t('spectator.timerExpired')
+                      : timerRemaining !== null
+                      ? t('spectator.timerRunning', { seconds: timerRemaining })
+                      : t(`quizmaster.timer_${gameState.timerMode}`)}
+                  </span>
+                </>
+              )}
             </p>
           </div>
         </div>
@@ -364,11 +405,14 @@ export default function SpectatorView({ store }) {
             <div className="space-y-2">
               {playerList.map((player) => {
                 const ans = formatAnswer(player.id);
+                const isWinner = gameState.guessWinnerId === player.id;
                 return (
                   <div
                     key={player.id}
                     className={`flex items-start gap-3 p-3 rounded-xl transition-all duration-500 ${
-                      newSubmitIds.has(player.id)
+                      isWinner
+                        ? 'bg-yellow-900/40 border border-yellow-500/40 ring-2 ring-yellow-400/30 scale-[1.02]'
+                        : newSubmitIds.has(player.id)
                         ? 'bg-green-900/30 border border-green-500/30 scale-[1.02]'
                         : 'bg-gray-800/50'
                     }`}
@@ -405,6 +449,9 @@ export default function SpectatorView({ store }) {
                           )}
                           {!ans.submitted && (
                             <span className="text-[10px] text-yellow-600">({t('quizmaster.preview')})</span>
+                          )}
+                          {isWinner && (
+                            <Trophy className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
                           )}
                         </div>
                       ) : (

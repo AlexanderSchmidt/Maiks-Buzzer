@@ -53,13 +53,22 @@ function createRoom() {
       mcOptionsLocked: false, // true once QM confirms → shown to players
 
       // Guess
+      guessType: 'number',   // 'number' | 'date'
       sliderMin: 0,
       sliderMax: 100,
       sliderLocked: false,  // true once QM confirms → shown to players
+      guessSolution: null,   // number or ISO date string — the correct answer
+      guessWinnerId: null,   // playerId of the closest answer
 
       // Player answers (for MC, Guess) { playerId: { preview, submitted, value } }
       playerAnswers: {},
       clearGeneration: 0,
+
+      // Death Timer
+      timerMode: 'off',       // 'off' | 'enforced' | 'enforced_after_first'
+      timerDuration: 30,      // seconds
+      timerStartedAt: null,   // epoch ms when timer was started (null = not running)
+      timerExpired: false,    // true once timer has run out
     },
     players: new Map(),           // socketId → { id, name, role, text, score, sessionToken, joinOrder }
     disconnectedPlayers: new Map(), // sessionToken → { player, timer, oldSocketId }
@@ -73,6 +82,51 @@ function createRoom() {
   };
   rooms.set(id, room);
   return room;
+}
+
+// ─── Timer helpers ──────────────────────────────────────────────────────
+const roomTimers = new Map(); // roomId → setTimeout reference
+
+function clearRoomTimer(roomId) {
+  const existing = roomTimers.get(roomId);
+  if (existing) {
+    clearTimeout(existing);
+    roomTimers.delete(roomId);
+  }
+}
+
+function startRoomTimer(room) {
+  clearRoomTimer(room.id);
+  const gs = room.gameState;
+  gs.timerStartedAt = Date.now();
+  gs.timerExpired = false;
+  const timeout = setTimeout(() => {
+    gs.timerExpired = true;
+    roomTimers.delete(room.id);
+    broadcast(room);
+  }, gs.timerDuration * 1000);
+  roomTimers.set(room.id, timeout);
+}
+
+function stopRoomTimer(room) {
+  clearRoomTimer(room.id);
+  room.gameState.timerStartedAt = null;
+  room.gameState.timerExpired = false;
+}
+
+function isTimerBlockingInput(gs) {
+  if (gs.timerMode === 'off') return false;
+  if (gs.timerMode === 'enforced') {
+    // Must be running AND not expired
+    return !gs.timerStartedAt || gs.timerExpired;
+  }
+  if (gs.timerMode === 'enforced_after_first') {
+    // Before first buzz/submit: allow input (timer not started yet)
+    if (!gs.timerStartedAt) return false;
+    // After start: block only when expired
+    return gs.timerExpired;
+  }
+  return false;
 }
 
 // Find a player across active and disconnected players by sessionToken
@@ -379,6 +433,7 @@ io.on('connection', (socket) => {
     if (!room) return;
     const gs = room.gameState;
     if (gs.currentMode !== 'BUZZER') return;
+    if (isTimerBlockingInput(gs)) return;
 
     // In "First wins" mode, block if already locked out
     if (!gs.raceMode && gs.lockedOut) return;
@@ -396,12 +451,29 @@ io.on('connection', (socket) => {
       soundId: player.soundId || 0,
     });
 
+    // Auto-start timer on first buzz in "enforced_after_first" mode
+    if (gs.timerMode === 'enforced_after_first' && !gs.timerStartedAt && gs.buzzes.length === 1) {
+      startRoomTimer(room);
+    }
+
     // In "First wins" mode, lock out after first buzz
     if (!gs.raceMode && gs.buzzes.length === 1) {
       gs.lockedOut = true;
     }
 
     addHistory(room, { playerId, playerName: player.name, action: 'BUZZ', detail: `Buzzed #${gs.buzzes.length}` });
+
+    // Auto-stop timer when all active players have buzzed
+    if (gs.timerStartedAt && !gs.timerExpired) {
+      const activePlayers = [...room.players.values()].filter(p => p.role === 'player');
+      const allBuzzed = activePlayers.length > 0 && activePlayers.every(p =>
+        gs.buzzes.find(b => b.playerId === p.id)
+      );
+      if (allBuzzed) {
+        stopRoomTimer(room);
+      }
+    }
+
     broadcast(room);
   });
 
@@ -496,8 +568,11 @@ io.on('connection', (socket) => {
     room.gameState.lockedOut = false;
     room.gameState.mcOptionsLocked = false;
     room.gameState.sliderLocked = false;
+    room.gameState.guessSolution = null;
+    room.gameState.guessWinnerId = null;
     room.gameState.playerAnswers = {};
     room.gameState.clearGeneration = (room.gameState.clearGeneration || 0) + 1;
+    stopRoomTimer(room);
     // Clear all player text
     for (const [, p] of room.players) {
       p.text = '';
@@ -517,6 +592,8 @@ io.on('connection', (socket) => {
       p.text = '';
     }
     room.gameState.playerAnswers = {};
+    room.gameState.guessSolution = null;
+    room.gameState.guessWinnerId = null;
     room.gameState.clearGeneration = (room.gameState.clearGeneration || 0) + 1;
     addHistory(room, { playerId: player.id, playerName: player.name, action: 'CLEAR', detail: 'Cleared all inputs' });
     broadcast(room);
@@ -537,8 +614,59 @@ io.on('connection', (socket) => {
     room.gameState.lockedOut = false;
     room.gameState.mcOptionsLocked = false;
     room.gameState.sliderLocked = false;
+    room.gameState.guessSolution = null;
+    room.gameState.guessWinnerId = null;
     room.gameState.playerAnswers = {};
+    stopRoomTimer(room);
     addHistory(room, { playerId: player.id, playerName: player.name, action: 'CHANGE_MODE', detail: `Changed to ${mode}` });
+    broadcast(room);
+  });
+
+  // ── Death Timer: QM configures timer ───────────────────────────────────
+  socket.on('SET_TIMER_MODE', ({ mode }) => {
+    const { roomId } = socket.data || {};
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const player = room.players.get(socket.id);
+    if (!player || player.role !== 'quizmaster') return;
+    const validModes = ['off', 'not_enforced', 'enforced', 'enforced_after_first'];
+    if (!validModes.includes(mode)) return;
+    room.gameState.timerMode = mode;
+    stopRoomTimer(room);
+    broadcast(room);
+  });
+
+  socket.on('SET_TIMER_DURATION', ({ duration }) => {
+    const { roomId } = socket.data || {};
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const player = room.players.get(socket.id);
+    if (!player || player.role !== 'quizmaster') return;
+    const d = Math.max(5, Math.min(300, Number(duration) || 30));
+    room.gameState.timerDuration = d;
+    stopRoomTimer(room);
+    broadcast(room);
+  });
+
+  socket.on('START_TIMER', () => {
+    const { roomId } = socket.data || {};
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const player = room.players.get(socket.id);
+    if (!player || player.role !== 'quizmaster') return;
+    if (room.gameState.timerMode === 'off') return;
+    startRoomTimer(room);
+    addHistory(room, { playerId: player.id, playerName: player.name, action: 'START_TIMER', detail: `Timer started (${room.gameState.timerDuration}s)` });
+    broadcast(room);
+  });
+
+  socket.on('STOP_TIMER', () => {
+    const { roomId } = socket.data || {};
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const player = room.players.get(socket.id);
+    if (!player || player.role !== 'quizmaster') return;
+    stopRoomTimer(room);
     broadcast(room);
   });
 
@@ -599,6 +727,30 @@ io.on('connection', (socket) => {
     broadcast(room);
   });
 
+  // ── Guess: QM sets guess type ──────────────────────────────────────────
+  socket.on('SET_GUESS_TYPE', ({ type }) => {
+    const { roomId } = socket.data || {};
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const player = room.players.get(socket.id);
+    if (!player || player.role !== 'quizmaster') return;
+    if (type !== 'number' && type !== 'date') return;
+    room.gameState.guessType = type;
+    room.gameState.sliderLocked = false;
+    room.gameState.guessSolution = null;
+    room.gameState.guessWinnerId = null;
+    room.gameState.playerAnswers = {};
+    room.gameState.buzzes = [];
+    if (type === 'number') {
+      room.gameState.sliderMin = 0;
+      room.gameState.sliderMax = 100;
+    } else {
+      room.gameState.sliderMin = new Date().toISOString().slice(0, 10);
+      room.gameState.sliderMax = new Date().toISOString().slice(0, 10);
+    }
+    broadcast(room);
+  });
+
   // ── Guess: QM sets range ──────────────────────────────────────────────
   socket.on('SET_SLIDER_RANGE', ({ min, max }) => {
     const { roomId } = socket.data || {};
@@ -606,9 +758,16 @@ io.on('connection', (socket) => {
     if (!room) return;
     const player = room.players.get(socket.id);
     if (!player || player.role !== 'quizmaster') return;
-    room.gameState.sliderMin = Number(min) || 0;
-    room.gameState.sliderMax = Number(max) || 100;
+    if (room.gameState.guessType === 'date') {
+      room.gameState.sliderMin = String(min);
+      room.gameState.sliderMax = String(max);
+    } else {
+      room.gameState.sliderMin = Number(min) || 0;
+      room.gameState.sliderMax = Number(max) || 100;
+    }
     room.gameState.sliderLocked = false;
+    room.gameState.guessSolution = null;
+    room.gameState.guessWinnerId = null;
     room.gameState.playerAnswers = {};
     broadcast(room);
   });
@@ -621,8 +780,66 @@ io.on('connection', (socket) => {
     const player = room.players.get(socket.id);
     if (!player || player.role !== 'quizmaster') return;
     room.gameState.sliderLocked = true;
+    room.gameState.guessSolution = null;
+    room.gameState.guessWinnerId = null;
     room.gameState.playerAnswers = {};
     addHistory(room, { playerId: player.id, playerName: player.name, action: 'LOCK_GUESS', detail: `Range: ${room.gameState.sliderMin}–${room.gameState.sliderMax}` });
+    broadcast(room);
+  });
+
+  // ── Guess: QM sets the correct solution ────────────────────────────────
+  socket.on('SET_GUESS_SOLUTION', ({ value }) => {
+    const { roomId } = socket.data || {};
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const player = room.players.get(socket.id);
+    if (!player || player.role !== 'quizmaster') return;
+    room.gameState.guessSolution = value;
+    room.gameState.guessWinnerId = null;
+    broadcast(room);
+  });
+
+  // ── Guess: QM reveals the closest answer (winner) ──────────────────────
+  socket.on('REVEAL_GUESS_WINNER', () => {
+    const { roomId } = socket.data || {};
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const player = room.players.get(socket.id);
+    if (!player || player.role !== 'quizmaster') return;
+    const gs = room.gameState;
+    if (gs.guessSolution === null || gs.guessSolution === undefined) return;
+
+    // Collect submitted answers
+    const submitted = Object.entries(gs.playerAnswers)
+      .filter(([, ans]) => ans.submitted)
+      .map(([pid, ans]) => ({ pid, value: ans.value }));
+    if (submitted.length === 0) return;
+
+    // Calculate distance
+    const solutionNum = gs.guessType === 'date'
+      ? new Date(gs.guessSolution).getTime()
+      : Number(gs.guessSolution);
+
+    let bestPid = null;
+    let bestDist = Infinity;
+    let bestBuzzIdx = Infinity;
+
+    for (const { pid, value } of submitted) {
+      const valNum = gs.guessType === 'date'
+        ? new Date(value).getTime()
+        : Number(value);
+      const dist = Math.abs(valNum - solutionNum);
+      const buzzIdx = gs.buzzes.findIndex((b) => b.playerId === pid);
+      if (dist < bestDist || (dist === bestDist && buzzIdx < bestBuzzIdx)) {
+        bestDist = dist;
+        bestPid = pid;
+        bestBuzzIdx = buzzIdx;
+      }
+    }
+
+    gs.guessWinnerId = bestPid;
+    const winnerName = [...room.players.values()].find(p => p.id === bestPid)?.name || bestPid;
+    addHistory(room, { playerId: player.id, playerName: player.name, action: 'REVEAL_WINNER', detail: `Winner: ${winnerName} (solution: ${gs.guessSolution})` });
     broadcast(room);
   });
 
@@ -651,6 +868,9 @@ io.on('connection', (socket) => {
     if (!player || player.role !== 'player') return;
     const gs = room.gameState;
 
+    // Block if enforced timer is not running or expired
+    if (isTimerBlockingInput(gs)) return;
+
     // In solo (non-race) mode, block submit if someone else already submitted
     if (!gs.raceMode) {
       const someoneElseSubmitted = Object.entries(gs.playerAnswers).some(
@@ -662,9 +882,25 @@ io.on('connection', (socket) => {
     if (!gs.playerAnswers[playerId]) {
       gs.playerAnswers[playerId] = { preview: null, value: null, submitted: false };
     }
+
+    // Validate guess answers are within range
+    if (gs.currentMode === 'GUESS' && gs.sliderLocked) {
+      if (gs.guessType === 'date') {
+        if (typeof value === 'string' && (value < gs.sliderMin || value > gs.sliderMax)) return;
+      } else {
+        const num = Number(value);
+        if (isNaN(num) || num < gs.sliderMin || num > gs.sliderMax) return;
+      }
+    }
+
     gs.playerAnswers[playerId].value = value;
     gs.playerAnswers[playerId].preview = value;
     gs.playerAnswers[playerId].submitted = true;
+
+    // Auto-start timer on first submit in "enforced_after_first" mode
+    if (gs.timerMode === 'enforced_after_first' && !gs.timerStartedAt) {
+      startRoomTimer(room);
+    }
 
     addHistory(room, { playerId, playerName: player.name, action: 'SUBMIT', detail: `Answer: ${JSON.stringify(value)}` });
 
@@ -675,6 +911,17 @@ io.on('connection', (socket) => {
         playerName: player.name,
         timestamp: Date.now(),
       });
+    }
+
+    // Auto-stop timer when all active players have submitted
+    if (gs.timerStartedAt && !gs.timerExpired) {
+      const activePlayers = [...room.players.values()].filter(p => p.role === 'player');
+      const allSubmitted = activePlayers.length > 0 && activePlayers.every(p =>
+        gs.playerAnswers[p.id]?.submitted
+      );
+      if (allSubmitted) {
+        stopRoomTimer(room);
+      }
     }
 
     broadcast(room);

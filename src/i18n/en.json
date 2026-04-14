@@ -71,8 +71,14 @@
     "guess": "Guess",
     "waitingForRange": "Waiting for the Quiz Master to set the range...",
     "typeANumber": "Type a number",
+    "youWon": "🏆 You won! Closest answer!",
+    "playerWasClosest": "{{name}} was closest!",
     "typeYourAnswer": "Type your answer...",
     "inputDisabled": "Input disabled by QM",
+    "timesUp": "⏰ Time's up!",
+    "waitingForTimer": "Waiting for timer...",
+    "timeRemaining": "{{seconds}}s remaining",
+    "timerReady": "Timer ready",
     "myHistory": "My History ({{count}})",
     "race": "Race",
     "solo": "Solo",
@@ -116,6 +122,13 @@
     "range": "Range",
     "min": "Min",
     "max": "Max",
+    "guessTypeNumber": "Number",
+    "guessTypeDate": "Date",
+    "solution": "Solution",
+    "setSolution": "Set Solution",
+    "revealClosest": "Reveal Closest",
+    "winner": "Winner",
+    "winnerIs": "🏆 Winner: {{name}}",
     "teams": "Teams ({{count}})",
     "teamNamePlaceholder": "Team name (leave blank for random)",
     "addTeam": "Add Team",
@@ -144,7 +157,15 @@
     "assignSound": "Assign sound...",
     "taken": "taken",
     "preview": "preview",
-    "copyTakeoverLink": "Copy Takeover Link"
+    "copyTakeoverLink": "Copy Takeover Link",
+    "deathTimer": "Death Timer",
+    "timer_off": "Off",
+    "timer_not_enforced": "QM Only",
+    "timer_enforced": "Enforced",
+    "timer_enforced_after_first": "After 1st",
+    "startTimer": "Start",
+    "stopTimer": "Stop",
+    "timesUp": "Time's up!"
   },
   "tooltips": {
     "resetRoom": "Reset all buzzes, answers, and player states for a new round",
@@ -180,7 +201,11 @@
     "addTeam": "Create a new team for players to join",
     "removeTeam": "Delete this team and unassign its players",
     "kickSpectator": "Remove this spectator from the room",
-    "defaultSound": "Choose the default buzz sound played for all players"
+    "defaultSound": "Choose the default buzz sound played for all players",
+    "timer_off": "No timer — Quiz Master controls rounds manually",    "timer_not_enforced": "Timer visible only to Quiz Master \u2014 does not block players",    "timer_enforced": "Timer must be running for players to buzz/answer",
+    "timer_enforced_after_first": "Timer auto-starts when first player buzzes or submits",
+    "startTimer": "Start the countdown timer",
+    "stopTimer": "Stop and reset the timer"
   },
   "spectator": {
     "spectatorView": "Spectator View",
@@ -198,6 +223,8 @@
     "noActivity": "Waiting for action...",
     "noBuzzes": "No buzzes yet",
     "noAnswers": "No answers yet",
-    "teamScores": "Team Scores"
+    "teamScores": "Team Scores",
+    "timerRunning": "⏱ {{seconds}}s",
+    "timerExpired": "Time's up!"
   }
 }

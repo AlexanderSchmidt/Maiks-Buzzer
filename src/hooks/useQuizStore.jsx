@@ -304,6 +304,34 @@ export function QuizProvider({ children }) {
     socket.emit('LOCK_SLIDER_RANGE');
   }, []);
 
+  const setGuessType = useCallback((type) => {
+    socket.emit('SET_GUESS_TYPE', { type });
+  }, []);
+
+  const setGuessSolution = useCallback((value) => {
+    socket.emit('SET_GUESS_SOLUTION', { value });
+  }, []);
+
+  const revealGuessWinner = useCallback(() => {
+    socket.emit('REVEAL_GUESS_WINNER');
+  }, []);
+
+  const setTimerMode = useCallback((mode) => {
+    socket.emit('SET_TIMER_MODE', { mode });
+  }, []);
+
+  const setTimerDuration = useCallback((duration) => {
+    socket.emit('SET_TIMER_DURATION', { duration });
+  }, []);
+
+  const startTimer = useCallback(() => {
+    socket.emit('START_TIMER');
+  }, []);
+
+  const stopTimer = useCallback(() => {
+    socket.emit('STOP_TIMER');
+  }, []);
+
   const previewAnswer = useCallback((value) => {
     socket.emit('PREVIEW_ANSWER', { value });
   }, []);
@@ -398,6 +426,13 @@ export function QuizProvider({ children }) {
     lockMcOptions,
     setSliderRange,
     lockSliderRange,
+    setGuessType,
+    setGuessSolution,
+    revealGuessWinner,
+    setTimerMode,
+    setTimerDuration,
+    startTimer,
+    stopTimer,
     previewAnswer,
     submitAnswer,
     leaveRoom,

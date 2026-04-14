@@ -71,8 +71,14 @@
     "guess": "Schätzfrage",
     "waitingForRange": "Warte auf den Quiz Master, der den Bereich festlegt...",
     "typeANumber": "Zahl eingeben",
+    "youWon": "🏆 Du hast gewonnen! Nächste Antwort!",
+    "playerWasClosest": "{{name}} war am nächsten!",
     "typeYourAnswer": "Antwort eingeben...",
     "inputDisabled": "Eingabe vom QM deaktiviert",
+    "timesUp": "⏰ Zeit abgelaufen!",
+    "waitingForTimer": "Warte auf Timer...",
+    "timeRemaining": "{{seconds}}s verbleibend",
+    "timerReady": "Timer bereit",
     "myHistory": "Mein Verlauf ({{count}})",
     "race": "Rennen",
     "solo": "Solo",
@@ -116,6 +122,13 @@
     "range": "Bereich",
     "min": "Min",
     "max": "Max",
+    "guessTypeNumber": "Zahl",
+    "guessTypeDate": "Datum",
+    "solution": "Lösung",
+    "setSolution": "Lösung festlegen",
+    "revealClosest": "Nächste Antwort aufdecken",
+    "winner": "Gewinner",
+    "winnerIs": "🏆 Gewinner: {{name}}",
     "teams": "Teams ({{count}})",
     "teamNamePlaceholder": "Teamname (leer lassen für zufällig)",
     "addTeam": "Team hinzufügen",
@@ -144,7 +157,15 @@
     "assignSound": "Sound zuweisen...",
     "taken": "vergeben",
     "preview": "Vorschau",
-    "copyTakeoverLink": "Übernahme-Link kopieren"
+    "copyTakeoverLink": "Übernahme-Link kopieren",
+    "deathTimer": "Death Timer",
+    "timer_off": "Aus",
+    "timer_not_enforced": "Nur QM",
+    "timer_enforced": "Erzwungen",
+    "timer_enforced_after_first": "Nach 1.",
+    "startTimer": "Start",
+    "stopTimer": "Stopp",
+    "timesUp": "Zeit abgelaufen!"
   },
   "tooltips": {
     "resetRoom": "Alle Buzzes, Antworten und Spielerzustände für eine neue Runde zurücksetzen",
@@ -180,7 +201,13 @@
     "addTeam": "Ein neues Team erstellen",
     "removeTeam": "Dieses Team löschen und Spieler freigeben",
     "kickSpectator": "Diesen Zuschauer aus dem Raum entfernen",
-    "defaultSound": "Den Standard-Buzz-Ton für alle Spieler auswählen"
+    "defaultSound": "Den Standard-Buzz-Ton für alle Spieler auswählen",
+    "timer_off": "Kein Timer — Quiz Master steuert Runden manuell",
+    "timer_not_enforced": "Timer nur für Quiz Master sichtbar — blockiert Spieler nicht",
+    "timer_enforced": "Timer muss laufen, damit Spieler buzzern/antworten können",
+    "timer_enforced_after_first": "Timer startet automatisch beim ersten Buzz oder Absenden",
+    "startTimer": "Countdown-Timer starten",
+    "stopTimer": "Timer stoppen und zurücksetzen"
   },
   "spectator": {
     "spectatorView": "Zuschaueransicht",
@@ -198,6 +225,8 @@
     "noActivity": "Warte auf Aktion...",
     "noBuzzes": "Noch keine Buzzes",
     "noAnswers": "Noch keine Antworten",
-    "teamScores": "Team-Punkte"
+    "teamScores": "Team-Punkte",
+    "timerRunning": "⏱ {{seconds}}s",
+    "timerExpired": "Zeit abgelaufen!"
   }
 }
